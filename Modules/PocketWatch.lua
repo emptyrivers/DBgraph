@@ -36,8 +36,8 @@ function PocketWatch:New()
     taskLimit = 1,
     taskCount = 0,
     now = 0,
-  }, mt)
+  }, watchMt)
   return watch
 end
 
-return PocketWatch\
+return PocketWatch
