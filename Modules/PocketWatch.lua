@@ -1,28 +1,28 @@
 local PocketWatch = {}
 local watchMt = { __index = PocketWatch }
 
-function PocketWatch:Do(task, forceBlocking, priority)
+function PocketWatch:Do(forceBlocking, task,  ...)
   if self.isBlocking or forceBlocking then
-    return task()
+    return task(data, ...)
   end
   if self.taskCount < self.taskLimit then
-    self.taskCount = self.taskCount
-    return task()
-  else
-    self:Schedule(task, priority and priority * 5 or 15)
+    self.taskCount = self.taskCount + 1
+    return task(data, ...)
+  else --too much! relinquish control and let the simulation tick
+    self:Schedule(task, 1, ...)
   end
 end
 
-function PocketWatch:Schedule(task, interval)
+function PocketWatch:Schedule(task, interval, ...)
   self.taskList[self.now + interval] = self.taskList[self.now + interval] or {}
-  table.insert(self.taskList[self.now + interval], task)
+  table.insert(self.taskList[self.now + interval], {task, ...})
 end
 
 function PocketWatch:DoTasks()
   local tasks = self.taskList[self.now]
   if tasks then
-    for _, task in ipairs(self.taskList[self.now]) do
-      self:Do(task)
+    for _, task in ipairs(tasks) do
+      self:Do(unpack(task))
     end
   end
   self.taskList[self.now] = nil
@@ -33,11 +33,15 @@ function PocketWatch:New()
   local watch = setmetatable({
     taskList = {},
     isBlocking = nil,
-    taskLimit = 1,
+    taskLimit = 10,
     taskCount = 0,
     now = 0,
   }, watchMt)
   return watch
+end
+
+function PocketWatch.setmetatables(watch)
+  setmetatable(watch, watchMt)
 end
 
 return PocketWatch
