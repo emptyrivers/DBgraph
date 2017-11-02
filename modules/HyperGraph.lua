@@ -67,7 +67,7 @@ end
 local validData = {
   node = {
     id = "string",
-    inflow = "weaktable"
+    inflow = "weaktable",
     outflow = "weaktable",
   },
   edge = {

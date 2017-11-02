@@ -11,7 +11,7 @@ function PocketWatch:Do(task, forceBlocking, priority)
   else
     self:Schedule(task, priority and priority * 5 or 15)
   end
-end  
+end
 
 function PocketWatch:Schedule(task, interval)
   self.taskList[self.now + interval] = self.taskList[self.now + interval] or {}
@@ -19,7 +19,7 @@ function PocketWatch:Schedule(task, interval)
 end
 
 function PocketWatch:DoTasks()
-  local tasks = self.taskList[self.now] 
+  local tasks = self.taskList[self.now]
   if tasks then
     for _, task in ipairs(self.taskList[self.now]) do
       self:Do(task)
@@ -31,7 +31,7 @@ end
 function PocketWatch:New()
   --creates a new Pocketwatch object.
   local watch = setmetatable({
-    taskList = {}
+    taskList = {},
     isBlocking = nil,
     taskLimit = 1,
     taskCount = 0,
