@@ -1,13 +1,13 @@
 local PocketWatch = {}
 local watchMt = { __index = PocketWatch }
 
-function PocketWatch:Do(forceBlocking, task,  ...)
-  if self.isBlocking or forceBlocking then
-    return task(data, ...)
+function PocketWatch:Do(isPatient, task,  ...)
+  if self.isBlocking or (not isPatient) then
+    return task(...)
   end
   if self.taskCount < self.taskLimit then
     self.taskCount = self.taskCount + 1
-    return task(data, ...)
+    return task(...)
   else --too much! relinquish control and let the simulation tick
     self:Schedule(task, 1, ...)
   end
@@ -22,7 +22,7 @@ function PocketWatch:DoTasks()
   local tasks = self.taskList[self.now]
   if tasks then
     for _, task in ipairs(tasks) do
-      self:Do(unpack(task))
+      self:Do(true, unpack(task))
     end
   end
   self.taskList[self.now] = nil
