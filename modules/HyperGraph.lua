@@ -72,6 +72,11 @@ local validData = {
   },
   edge = {
     id = "string",
+    category = "string",
+    hidden = "boolean",
+    energy = "number",
+    products = "table",
+    ingredients = "table",
     inflow = "weaktable",
     outflow = "weaktable",
   },
@@ -88,7 +93,7 @@ local function Validate(data, format)
       if dataType == "weaktable" and fieldType == "table" then
         setmetatable(data[field], weakMT)
       else
-        return
+        data[field] = setmetatable({}, weakMT)
       end
     end
   end
@@ -112,7 +117,7 @@ function HyperGraph:AddEdge(data)
   if edge then
     local edgeid = edge.id
     self.edges[edgeid] = edge
-    for nodeid in pairs(edge.inflow) do
+    for nodeid in pairs(edge.ingredients) do
       local node = self.nodes[nodeid]
       if node then
         node.outflow[edgeid] = edge
@@ -122,7 +127,7 @@ function HyperGraph:AddEdge(data)
         return
       end
     end
-    for nodeid in pairs(edge.outflow) do
+    for nodeid in pairs(edge.products) do
       local node = self.nodes[nodeid]
       if node then
         node.inflow[edgeid] = edge
