@@ -58,7 +58,7 @@ function explore(graph, force)
     local data = {
       id = name,
       category = prototype.category,
-      hidden = prototype.hidden,
+      hidden = ignoreUnlocks or prototype.hidden,
       energy = prototype.energy,
       ingredients = {},
       products = {},
@@ -72,17 +72,20 @@ function explore(graph, force)
     for _, product in ipairs(prototype.products) do
       data.products[product.name] = product
     end
+    graph:AddEdge(data)
   end
+  timer:Do(updatePaths, graph)
 end
 
-function rebuild(graph, force)
-  --TODO: Implementation
-  --should schedule re-exploration of the graph, since it's very difficult to tell what's changed
-end
 
 function updatePaths(graph, recipe)
   --TODO: Implementation
   --Schedules an update to paths - needs algorithm to update paths implemented first :)
+  if not recipe then
+    
+  else
+    
+  end
 end
 
 
@@ -118,9 +121,9 @@ do
 
 
   script.on_configuration_changed(function(event)
-    rebuild(fullGraph)
+    explore(fullGraph)
     for force, graph in pairs(productionChain.forceGraphs) do
-      rebuild(graph, force)
+      explore(graph, force)
     end
   end)
 
@@ -151,7 +154,7 @@ do
       local graph = productionChain.forceGraphs[event.force.name] = HyperGraph:New()
       explore(graph)
     elseif event.name == "on_forces_merging" then
-      destroy()
+      productionChain.forceGraphs[event.force.name] = nil
     --else
       --not sure if i really need to do anything here. responder should be able to understand which force the player is part of.
     end

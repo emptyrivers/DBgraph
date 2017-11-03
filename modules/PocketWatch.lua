@@ -1,32 +1,42 @@
 local PocketWatch = {}
 local watchMt = { __index = PocketWatch }
 
-function PocketWatch:Do(isPatient, task,  ...)
+function PocketWatch:Do(isPatient, task, ...)
   if (self.isBlocking or (not isPatient)) then
     return task(...)
   end
-  if not self.isEarly and (self.taskCount < self.taskLimit) then
+  if not self.isEarly then
     self.taskCount = self.taskCount + 1
     return task(...)
   else --too much! relinquish control and let the simulation tick
-    self:Schedule(task, 1, ...)
+    self:Schedule(1, true, task, ...)
   end
 end
 
-function PocketWatch:Schedule(task, interval, ...)
+function PocketWatch:Schedule(interval, isNew, ...)
   if self.isEarly then
     self.taskList.early = self.taskList.early or {}
-    table.insert(self.taskList.early, {task,...})
+    table.insert(self.taskList.early, {...})
   else
     self.taskList[self.now + interval] = self.taskList[self.now + interval] or {}
-    table.insert(self.taskList[self.now + interval], {task, ...})
+    if isNew then
+      table.insert(self.taskList[self.now + interval], {...})
+    else
+      table.insert(self.taskList[self.now + interval], (...))
+    end
   end
 end
 
 function PocketWatch:DoTasks(time)
+  if not time then return end
   if self.tasks.early then
+    self.taskCount = 0
     for _, task in ipairs(self.tasks,early) do
-      self:Do(true, unpack(task))
+      if self.taskCount < self.taskLimit then
+        self:Do(true, unpack(task))
+      else
+        self:Schedule(1, false, task)
+      end
     end
   end
   self.tasks.early = nil
@@ -35,7 +45,11 @@ function PocketWatch:DoTasks(time)
   local tasks = self.taskList[self.now]
   if tasks then
     for _, task in ipairs(tasks) do
-      self:Do(true, unpack(task))
+      if self.taskCount < self.taskLimit then
+        self:Do(true, unpack(task))
+      else
+        self:Schedule(1, false, task)
+      end
     end
   end
   self.taskList[self.now] = nil
