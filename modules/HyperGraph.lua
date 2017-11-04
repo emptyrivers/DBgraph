@@ -42,23 +42,13 @@ require "util"
 local HyperGraph = {}
 
 local HyperGraphMt = { __index = HyperGraph}
+local weakMt = {__mode = "kv"}
 
-
-function HyperGraph:New(nodes, edges)
+function HyperGraph:New()
   local hgraph = setmetatable({
     nodes = {},
     edges = {},
-  }, HyperGraph.MT)
-  if nodes then
-    for _, node in pairs(nodes) do
-      hgraph:AddNode(node)
-    end
-  end
-  if edges then
-    for _, edge in pairs(edges) do
-      hgraph:AddEdge(edge)
-    end
-  end
+  }, HyperGraphMt)
   return hgraph
 end
 
@@ -80,7 +70,6 @@ local validData = {
   },
 }
 
-local weakMt = {__mode = "kv"}
 
 local function Validate(data, format)
   if type(data) ~= "table" then return end
@@ -89,9 +78,9 @@ local function Validate(data, format)
     local fieldType = type(data[field])
     if fieldType ~= dataType then
       if dataType == "weaktable" and fieldType == "table" then
-        setmetatable(data[field], weakMT)
+        setmetatable(data[field], weakMt)
       else
-        data[field] = setmetatable({}, weakMT)
+        data[field] = setmetatable({}, weakMt)
       end
     end
   end
@@ -101,44 +90,42 @@ end
 
 function HyperGraph:AddNode(data)
   local node = Validate(data, "node")
-  if node then
-    self.nodes[node.id] = node
-  else
+  if not node then
     log "HyperGraph.lua - Warning! Invalid data format on AddNode."
     return
   end
+  self.nodes[node.id] = node
   node.valid = true
 end
 
 function HyperGraph:AddEdge(data)
   local edge = Validate(data, "edge")
-  if edge then
-    local edgeid = edge.id
-    self.edges[edgeid] = edge
-    for nodeid in pairs(edge.ingredients) do
-      local node = self.nodes[nodeid]
-      if node then
-        node.outflow[edgeid] = edge
-        edge.inflow[nodeid] = node
-      else
-        log "HyperGraph.lua - Warning! Attempt to add an Edge with an invalid input."
-        return
-      end
-    end
-    for nodeid in pairs(edge.products) do
-      local node = self.nodes[nodeid]
-      if node then
-        node.inflow[edgeid] = edge
-        edge.outflow[nodeid] = node
-      else
-        log "HyperGraph.lua - Warning! Attempt to add an Edge with an invalid output."
-        return
-      end
-    end
-  else
+  if not edge then
     log "HyperGraph.lua - Warning! Invalid data format on AddEdge."
     return
   end
+  local edgeid = edge.id
+  for nodeid in pairs(edge.ingredients) do
+    local node = self.nodes[nodeid]
+    if node then
+      node.outflow[edgeid] = edge
+      edge.inflow[nodeid] = node
+    else
+      log "HyperGraph.lua - Warning! Attempt to add an Edge with an invalid input."
+      return
+    end
+  end
+  for nodeid in pairs(edge.products) do
+    local node = self.nodes[nodeid]
+    if node then
+      node.inflow[edgeid] = edge
+      edge.outflow[nodeid] = node
+    else
+      log "HyperGraph.lua - Warning! Attempt to add an Edge with an invalid output."
+      return
+    end
+  end
+  self.edges[edgeid] = edge
   edge.valid = true
 end
 
@@ -166,12 +153,14 @@ function HyperGraph:Clone()
 end
 
 function HyperGraph.setmetatables(hgraph)
-  setmetatable(hgraph, HyperGraph.MT)
+  setmetatable(hgraph, HyperGraphMt)
   for _, node in pairs(hgraph.nodes) do
-    setmetatable(node, weakMt)
+    setmetatable(node.inflow, weakMt)
+    setmetatable(node.outflow, weakMt)
   end
   for _, edge in pairs(hgraph.edges) do
-    setmetatable(edge, weakMt)
+    setmetatable(edge.inflow, weakMt)
+    setmetatable(edge.outflow, weakMt)
   end
   return hgraph
 end

@@ -151,10 +151,10 @@ do
     events.on_forces_merging,
     --events.on_player_changed_force,
   }, function(event)
-    if event.name == "on_force_created" then
+    if event.name == events.on_force_created then
       productionChain.forceGraphs[event.force.name] = HyperGraph:New()
       explore(productionChain.forceGraphs[event.force.name])
-    elseif event.name == "on_forces_merging" then
+    elseif event.name == events.on_forces_merging then
       destroy()
     --else
       --not sure if i really need to do anything here. responder should be able to understand which force the player is part of.
