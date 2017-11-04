@@ -1,8 +1,9 @@
 local HyperGraph = require "modules.HyperGraph"
 local PocketWatch = require "modules.PocketWatch"
 
-local timer, fullGraph, productionChain
+local timer, fullGraph, productionChain, loaded
 local events = defines.events
+
 
 --define helper functions
 function build(techTree)
@@ -15,6 +16,7 @@ function build(techTree)
           techTree[name] = {
             unlocks = {effect.recipe},
             prereq  = tech.prerequisites,
+            name = name,
           }
           techTree._inverted[effect.recipe] = name
           table.insert(stack, techTree[name])
@@ -25,15 +27,15 @@ function build(techTree)
       end
     end
   end
-    --...and their prerequisites!
+  --...and their prerequisites!
   while #stack > 0 do
     local tech = table.remove(stack)
-    for name, prereq in pairs(tech.prereq) do
+    for name, tech in pairs(tech.prereq) do
       if not techTree[name] then
         techTree[name] = {
-          prereq = prereq.prerequisites
+          prereq = tech.prerequisites,
+          name = name
         }
-        table.insert(stack, prereq)
       end
     end
   end
@@ -43,6 +45,7 @@ end
 function explore(graph, force)
   --TODO: Implementation
   --schedules exploration of the graph
+  log(serpent.block(graph))
   local ignoreUnlocks = force ~= nil
   for name, prototype in pairs(game.item_prototypes) do
     if prototype.valid then
@@ -58,7 +61,7 @@ function explore(graph, force)
     local data = {
       id = name,
       category = prototype.category,
-      hidden = ignoreUnlocks or prototype.hidden,
+      hidden = prototype.hidden,
       energy = prototype.energy,
       ingredients = {},
       products = {},
@@ -74,18 +77,16 @@ function explore(graph, force)
     end
     graph:AddEdge(data)
   end
-  timer:Do(updatePaths, graph)
 end
 
+function rebuild(graph, force)
+  --TODO: Implementation
+  --should schedule re-exploration of the graph, since it's very difficult to tell what's changed
+end
 
 function updatePaths(graph, recipe)
   --TODO: Implementation
   --Schedules an update to paths - needs algorithm to update paths implemented first :)
-  if not recipe then
-    
-  else
-    
-  end
 end
 
 
@@ -107,9 +108,9 @@ do
     fullGraph = productionChain.fullGraph
     techTree = productionChain.techTree
     build(techTree)
-    explore(fullgraph)
+    explore(fullGraph)
   end)
-
+---[[
   script.on_load(function()
     productionChain = global.productionChain
     fullGraph = HyperGraph.setmetatables(productionChain.fullGraph)
@@ -118,12 +119,12 @@ do
       HyperGraph.setmetatables(graph)
     end
   end)
-
+--]]
 
   script.on_configuration_changed(function(event)
-    explore(fullGraph)
+    rebuild(fullGraph)
     for force, graph in pairs(productionChain.forceGraphs) do
-      explore(graph, force)
+      rebuild(graph, force)
     end
   end)
 
@@ -151,10 +152,10 @@ do
     --events.on_player_changed_force,
   }, function(event)
     if event.name == "on_force_created" then
-      local graph = productionChain.forceGraphs[event.force.name] = HyperGraph:New()
-      explore(graph)
+      productionChain.forceGraphs[event.force.name] = HyperGraph:New()
+      explore(productionChain.forceGraphs[event.force.name])
     elseif event.name == "on_forces_merging" then
-      productionChain.forceGraphs[event.force.name] = nil
+      destroy()
     --else
       --not sure if i really need to do anything here. responder should be able to understand which force the player is part of.
     end

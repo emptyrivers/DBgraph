@@ -38,7 +38,7 @@ All rights relinquished. (see ./License.md for details).
 local PocketWatch = require "modules.PocketWatch"TODO: figure out if i actually need this
 if not PocketWatch then return end
 --]]
-
+require "util"
 local HyperGraph = {}
 
 HyperGraph.MT = {
@@ -175,6 +175,7 @@ function HyperGraph.setmetatables(hgraph)
   for _, edge in pairs(hgraph.edges) do
     setmetatable(edge, weakMT)
   end
+  return hgraph
 end
 
 return HyperGraph
