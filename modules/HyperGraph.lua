@@ -41,9 +41,7 @@ if not PocketWatch then return end
 require "util"
 local HyperGraph = {}
 
-HyperGraph.MT = {
-  __index = HyperGraph
-}
+local HyperGraphMt = { __index = HyperGraph}
 
 
 function HyperGraph:New(nodes, edges)
@@ -82,7 +80,7 @@ local validData = {
   },
 }
 
-local weakMT = {__mode = "kv"}
+local weakMt = {__mode = "kv"}
 
 local function Validate(data, format)
   if type(data) ~= "table" then return end
@@ -170,10 +168,10 @@ end
 function HyperGraph.setmetatables(hgraph)
   setmetatable(hgraph, HyperGraph.MT)
   for _, node in pairs(hgraph.nodes) do
-    setmetatable(node, weakMT)
+    setmetatable(node, weakMt)
   end
   for _, edge in pairs(hgraph.edges) do
-    setmetatable(edge, weakMT)
+    setmetatable(edge, weakMt)
   end
   return hgraph
 end
