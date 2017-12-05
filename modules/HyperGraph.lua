@@ -1,43 +1,3 @@
---[[
-Implementation of HyperGraphs, in the context of the Factorio recipe system.
-requires PocketWatch.lua to function.
-
-
-Usage:
-
-Each Graph consists of nodes and edges, which are housed in the .nodes and .edges fields.
-Each node and edge has 2 weak tables associated with it, indicating the incident parents and children.
-
-In the context of factorio, nodes are items, and edges are recipes.
-
-local hgraph = HyperGraph:New(nodes, edges)
-Creates a new hypergraph object, initialized with the specified nodes and edges
-
-hgraph:AddNode(data)
-Adds a new node. Checks for validity of the node data
-
-hgraph:AddEdge(data)
-Adds a new edge. Checks for validity of the edge data. The inflow and outflow edges must exist, or the edge will not be added.
-
-hgraph:RemoveNode(id)
-Removes the node, if it exists. Also removes any edge that has the node as an endpoint.
-
-hgraph:RemoveEdge(id)
-Removes the edge, if it exists. Also removes the edge from inflow and outflow data of the nodes it connected.
-
-hgraph:CLone()
-returns a deep copy of the hgraph. The two are entirely separate objects; mutating one object will never mutate the other.
-**NOTE** this only holds for data about the graph itself. Any mutable user data will not be cloned.
-
-
-Written by Emptyrivers. Contact: Rivers#8800, or user emptyrivers
-All rights relinquished. (see ./License.md for details).
---]]
-
---[[
-local PocketWatch = require "modules.PocketWatch"TODO: figure out if i actually need this
-if not PocketWatch then return end
---]]
 require "util"
 local HyperGraph = {}
 
@@ -150,6 +110,30 @@ end
 
 function HyperGraph:Clone()
   return HyperGraph.setmetatables(table.deepcopy(self))
+end
+
+function HyperGraph:Dump(method, playerID)
+  local graph = self:Clone()
+  for _, node in pairs(graph.nodes) do
+    node.inflow = nil
+    node.outflow = nil
+  end
+  for _,edge in pairs(graph.edges) do
+    edge.inflow = nil
+    edge.outflow = nil
+  end
+  local toLog = ([[----------------------------------------------
+ProductionChain: HyperGraph Dump at: %d
+%s
+  ]]):format(game and game.tick or 0, serpent.block(graph))
+  if method == "file" then
+    game.write_file("HyperGraph_log", toLog, true, playerID)
+  elseif method == "console" then
+    local print = playerID and game.players[playerID].print or game.print
+    print(toLog)
+  elseif method == "log" then
+    log(toLog)
+  end
 end
 
 function HyperGraph.setmetatables(hgraph)
