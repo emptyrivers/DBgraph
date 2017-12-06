@@ -12,7 +12,7 @@ PocketWatch.taskMap['someTask'] = function(state, ...)
 
   -- perform some small manipulation to state
 
-  watch:Do('someTask', state, ...) -- where watch is a PocketWatch Object
+  return watch:Do('someTask', state, ...) -- where watch is a PocketWatch Object
 end
 
 global.watch = PocketWatch:New()
