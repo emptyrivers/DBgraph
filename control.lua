@@ -1,12 +1,11 @@
 local HyperGraph = require "modules.HyperGraph"
 local PocketWatch = require "modules.PocketWatch"
 local mod_gui = require "mod-gui"
-local timer, fullGraph, techTree, productionChain, loaded
+local timer, fullGraph, techTree, forceGraphs
 local events = defines.events
+local taskMap = PocketWatch.taskMap
 
-
---define helper functions
-local function buildTechTree(techTree)
+function taskMap.buildTechTree(techTree)
   --we only care about techs that unlock recipes...
   local stack = {}
   for name, tech in pairs(game.technology_prototypes) do
@@ -41,8 +40,7 @@ local function buildTechTree(techTree)
   end
 end
 
-
-local function explore(graph, force)
+function taskMap.explore(graph, forceName, shouldRebuild)
   for name, prototype in pairs(game.item_prototypes) do
     if prototype.valid then
       graph:AddNode({id = name, type = "item"})
@@ -53,7 +51,7 @@ local function explore(graph, force)
       graph:AddNode({id = name, type = "fluid"})
     end
   end
-  local recipes = force and force.recipes or game.recipe_prototypes
+  local recipes = forceName and game.forces[forceName].recipes or game.recipe_prototypes
   for name, recipe in pairs(recipes) do
     local data = {
       id = name,
@@ -77,27 +75,27 @@ local function explore(graph, force)
   end
 end
 
-local function rebuild(graph, force)
+function taskMap.rebuild(graph, force)
   --TODO: Implementation
   --should schedule re-exploration of the graph, since it's very difficult to tell what's changed
 end
 
-local function updatePaths(graph, recipe)
+function taskMap.updatePaths(graph, recipe)
   --TODO: Implementation
   --Schedules an update to paths - needs algorithm to update paths implemented first :)
 end
 
-local function createGUI(event)
+function taskMap.createGUI(playerID)
+  do return end
   local flow = mod_gui.get_button_flow(game.players[event.player_index])
   local frame = flow.add{
     type = "frame",
-    name = "ProductionChainMenuButtonFrame",
+    name = "globalMenuButtonFrame",
     direction = "horizontal"
   }
   frame.add{
     type = "button",
-    name = "ProductionChainMenuButton",
-
+    name = "globalMenuButton",
   }
   game.print"successfully created GUI"
 end
@@ -111,52 +109,64 @@ do
     timer = global.timer
     timer.id = "Primary Timer"
     fullGraph = global.fullGraph
+    forceGraphs = global.forceGraphs
     techTree = global.techTree
-    buildTechTree(techTree)
-    explore(fullGraph)
+    timer:Do("buildTechTree")
+    timer:Do("explore",fullGraph)
+
   end)
 
   script.on_load(function()
     fullGraph = HyperGraph.setmetatables(global.fullGraph)
     timer = PocketWatch.setmetatables(global.timer)
-    for _, graph in pairs(global.forceGraphs) do
+    forceGraphs = global.forceGraphs
+    for _, graph in pairs(forceGraphs) do
       HyperGraph.setmetatables(graph)
     end
     script.on_event(events.on_tick, timer.continueWork)
   end)
 
-
   script.on_configuration_changed(function(event)
-    rebuild(fullGraph)
-    for force, graph in pairs(productionChain.forceGraphs) do
-      rebuild(graph, force)
+    timer:Do("explore", fullGraph, nil, true)
+    for force, graph in pairs(global.forceGraphs) do
+      timer:Do("explore", graph, force, true)
     end
   end)
 
   script.on_event(events.on_research_finished, function(event)
     local research = event.research
-    local graph = productionChain.forceGraphs[research.force.name]
+    local graph = global.forceGraphs[research.force.name]
     for _, effect in ipairs(research.effects) do
       if effect.type == "unlock-recipe" then
-        updatePaths(graph, research.force.recipes[effect.recipe])
+        timer:Do('updatePaths', graph, research.force.recipes[effect.recipe])
       end
     end
   end)
 
-  script.on_event(events.on_player_created,  createGUI)
+  script.on_event({
+    events.on_player_created,
+    events.on_player_changed_force,
+  },  function(event)
+    local playerID = event.player_index
+    if event.name == "on_player_created" then
+      timer:Do('createGUI', playerID)
+    end
+    local playerForce = game.players[playerID].force.name
+    if not forceGraphs[playerForce] then
+      forceGraphs[playerForce] = HyperGraph:New()
+      timer:Do('explore', forceGraphs[playerForce], playerForce)
+    end
+  end)
 
   script.on_event({
     events.on_force_created,
     events.on_forces_merging,
-    --events.on_player_changed_force,
   }, function(event)
     if event.name == events.on_force_created then
-      productionChain.forceGraphs[event.force.name] = HyperGraph:New()
-      explore(productionChain.forceGraphs[event.force.name])
+      global.forceGraphs[event.force.name] = HyperGraph:New()
+      timer:Do('explore', forceGraphs[event.force.name])
     elseif event.name == events.on_forces_merging then
-      destroy(event.force.name)
-    --else
-      --not sure if i really need to do anything here. responder should be able to understand which force the player is part of.
+    forceGraphs[event.force.name] = nil
     end
   end)
 
