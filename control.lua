@@ -5,20 +5,22 @@ local timer, fullGraph, techTree, forceGraphs
 local events = defines.events
 local taskMap = PocketWatch.taskMap
 
-function taskMap.buildTechTree(techTree)
+function taskMap.buildTechTree()
   --we only care about techs that unlock recipes...
+  techTree = { _inverted = {} }
   local stack = {}
-  for name, tech in pairs(game.technology_prototypes) do
-    for _, effect in ipairs(tech.effects) do
+  for name, prototype in pairs(game.technology_prototypes) do
+    for _, effect in pairs(prototype.effects) do
       if effect.type == "unlock-recipe" then
         if not techTree[name] then
-          techTree[name] = {
+          local data = {
             unlocks = {effect.recipe},
-            prereq  = tech.prerequisites,
+            prereq  = {},
             name = name,
+            prototype = prototype,
           }
-          techTree._inverted[effect.recipe] = name
-          table.insert(stack, techTree[name])
+          techTree._inverted[effect.recipe] = data
+          table.insert(stack, data)
         else
           techTree._inverted[effect.recipe] = techTree[name]
           table.insert(techTree[name].unlocks,effect.recipe)
@@ -29,12 +31,17 @@ function taskMap.buildTechTree(techTree)
   --...and their prerequisites!
   while #stack > 0 do
     local tech = table.remove(stack)
-    for name, tech in pairs(tech.prereq) do
+    for name, prototype in pairs(tech.prototype.prerequisites) do
       if not techTree[name] then
-        techTree[name] = {
-          prereq = tech.prerequisites,
-          name = name
+        local data = {
+          prereq = {},
+          name = name,
+          prototype = prototype,
         }
+        tech.prereq[name] = data
+        table.insert(stack, techTree[name])
+      else
+        tech.prereq[name] = techTree[name]
       end
     end
   end
@@ -73,11 +80,10 @@ function taskMap.explore(graph, forceName, shouldRebuild)
     end
     graph:AddEdge(data)
   end
+  timer:Do("createPaths", graph)
 end
 
-function taskMap.rebuild(graph, force)
-  --TODO: Implementation
-  --should schedule re-exploration of the graph, since it's very difficult to tell what's changed
+function taskMap.createPaths(graph)
 end
 
 function taskMap.updatePaths(graph, recipe)
@@ -105,13 +111,12 @@ do
     global.timer = PocketWatch:New()
     global.fullGraph = HyperGraph:New()
     global.forceGraphs = {}
-    global.techTree = { _inverted = {}}
     timer = global.timer
     timer.id = "Primary Timer"
     fullGraph = global.fullGraph
     forceGraphs = global.forceGraphs
     techTree = global.techTree
-    timer:Do("buildTechTree")
+    global.techTree = timer:Do("buildTechTree")
     timer:Do("explore",fullGraph)
 
   end)
@@ -120,6 +125,7 @@ do
     fullGraph = HyperGraph.setmetatables(global.fullGraph)
     timer = PocketWatch.setmetatables(global.timer)
     forceGraphs = global.forceGraphs
+    techTree = global.techTree
     for _, graph in pairs(forceGraphs) do
       HyperGraph.setmetatables(graph)
     end
@@ -127,6 +133,7 @@ do
   end)
 
   script.on_configuration_changed(function(event)
+    global.techTree = timer:Do("buildTechTree")
     timer:Do("explore", fullGraph, nil, true)
     for force, graph in pairs(global.forceGraphs) do
       timer:Do("explore", graph, force, true)
