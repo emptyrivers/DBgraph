@@ -12,7 +12,7 @@ PocketWatch.taskMap['someTask'] = function(state, ...)
 
   -- perform some small manipulation to state
 
-  watch:Do('someTask', state, ...) -- where watch is a PocketWatch Object
+  return watch:Do('someTask', state, ...) -- where watch is a PocketWatch Object
 end
 
 global.watch = PocketWatch:New()
@@ -62,6 +62,8 @@ function PocketWatch:New()
     taskCount = 0,
     globalCount = 0,
     ticksWorked = 0,
+    futureTasks = 0
+    emptyTicks = 0
     now = 0,
   }, watchMt)
   return watch
@@ -72,8 +74,7 @@ function PocketWatch:Do(id, ...)
   if task then
     if self.isBlocking or self.isEarly then
       return task(...)
-    end
-    if self.taskCount < self.taskLimit then
+    elseif self.taskCount < self.taskLimit then
       self.taskCount = self.taskCount + 1
       return task(...)
     else --too much! relinquish control and let the simulation tick
@@ -95,6 +96,7 @@ function PocketWatch:Schedule(task, old, sleepTime)
   if old then
     table.insert(taskList, interval, task)
   else
+    self.futureTasks = self.futureTasks + 1
     table.insert(taskList, task)
   end
   if not self.working then
@@ -112,6 +114,7 @@ function PocketWatch:DoTasks(time)
   local tasks = self.taskList[self.now]
   for _, task in ipairs(self.tasks) do
       if self.taskCount < self.taskLimit then
+        self.futureTasks = self.futureTasks - 1
         self:Do(unpack(task))
       else
         tooBusy = true
@@ -121,6 +124,8 @@ function PocketWatch:DoTasks(time)
   end
   if self.taskCount > 0 then
     self.ticksWorked = self.ticksWorked + 1
+  else
+    self.emptyTicks = self.emptyTicks + 1
   end
   self.working = tooBusy
   self.taskList[self.now] = nil
@@ -128,7 +133,7 @@ end
 
 function PocketWatch:ContinueWork(event)
   self:DoTasks(event.tick)
-  if not self.working then
+  if self.futureTasks == 0 then
     script.on_event(defines.events.on_tick, nil)
   end
 end
@@ -137,15 +142,17 @@ function PocketWatch:Dump(method, playerID)
   local toLog = ([[----------------------------------------------
 ProductionChain: PocketWatch Dump at: %d
 * ID: %s
-* Unfinished tasks: %d
-* Total Tasks completed: %d
-* Ticks Spent working: %d
+* Unfinished tasks:                %d
+* Total Tasks completed:           %d
+* Ticks Spent working:             %d
+* Ticks Spent Registered but idle: %d
 ]]):format(
     self.now or 0,
     self.id or "unkown",
-    #(self.taskList[self.now] or {}),
+    self.futureTasks or 0,
     self.globalCount or 0,
-    self.ticksWorked or 0
+    self.ticksWorked or 0,
+    self.emptyTicks or 0,
   )
   if method == "file" then
     game.write_file("PocketWatch_log", toLog, true, playerID)
