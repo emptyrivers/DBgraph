@@ -80,15 +80,13 @@ function taskMap.explore(graph, forceName, shouldRebuild)
     end
     graph:AddEdge(data)
   end
-  timer:Do("createPaths", graph)
+  return timer:Do("createPaths", graph)
 end
 
 function taskMap.createPaths(graph)
 end
 
-function taskMap.updatePaths(graph, recipe)
-  --TODO: Implementation
-  --Schedules an update to paths - needs algorithm to update paths implemented first :)
+function taskMap.updatePaths(graph, recipes)
 end
 
 function taskMap.createGUI(playerID)
@@ -141,12 +139,9 @@ do
   end)
 
   script.on_event(events.on_research_finished, function(event)
-    local research = event.research
-    local graph = global.forceGraphs[research.force.name]
-    for _, effect in ipairs(research.effects) do
-      if effect.type == "unlock-recipe" then
-        timer:Do('updatePaths', graph, research.force.recipes[effect.recipe])
-      end
+    local unlockedRecipes graph = techTree[event.research.name].unlocks, forceGraphs[event.research.force.name]
+    if unlockedRecipes and graph then
+      timer:Do('updatePaths', graph, unlockedRecipes)
     end
   end)
 
@@ -170,7 +165,7 @@ do
     events.on_forces_merging,
   }, function(event)
     if event.name == events.on_force_created then
-      global.forceGraphs[event.force.name] = HyperGraph:New()
+      forceGraphs[event.force.name] = HyperGraph:New()
       timer:Do('explore', forceGraphs[event.force.name])
     elseif event.name == events.on_forces_merging then
     forceGraphs[event.force.name] = nil
