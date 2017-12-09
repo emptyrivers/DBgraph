@@ -67,10 +67,11 @@ local function explore(graph, force)
     }
     data.prereq = techTree._inverted[name]
     for _, ingredient in ipairs(recipe.ingredients) do
-      data.ingredients[ingredient.name] = ingredient
+      data.ingredients[ingredient.name] = ingredient.amount
     end
     for _, product in ipairs(recipe.products) do
-      data.products[product.name] = product
+      data.products[product.name] = product.amount or 
+        (product.probability * .5 * (product.amount_min + product.amount_max))
     end
     graph:AddEdge(data)
   end
