@@ -5,7 +5,7 @@
     "author": "Emptyrivers",
     "contact": "",
     "homepage": "",
-    "factorio_version": "0.15",
-    "dependencies": ["base >= 0.15"],
+    "factorio_version": "0.16",
+    "dependencies": ["base >= 0.16"],
     "description": "This mod finds optimal production chains for you. Should work with any configuration of mods."
 }
