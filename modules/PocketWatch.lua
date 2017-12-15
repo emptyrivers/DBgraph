@@ -62,8 +62,8 @@ function PocketWatch:New()
     taskCount = 0,
     globalCount = 0,
     ticksWorked = 0,
-    futureTasks = 0
-    emptyTicks = 0
+    futureTasks = 0,
+    emptyTicks = 0,
     now = 0,
   }, watchMt)
   return watch
@@ -113,13 +113,12 @@ function PocketWatch:DoTasks(time)
   self.isEarly = false
   local tasks = self.taskList[self.now]
   for _, task in ipairs(self.tasks) do
-      if self.taskCount < self.taskLimit then
-        self.futureTasks = self.futureTasks - 1
-        self:Do(unpack(task))
-      else
-        tooBusy = true
-        self:Schedule(task, true)
-      end
+    if self.taskCount < self.taskLimit then
+      self.futureTasks = self.futureTasks - 1
+      self:Do(unpack(task))
+    else
+      tooBusy = true
+      self:Schedule(task, true)
     end
   end
   if self.taskCount > 0 then
@@ -152,7 +151,7 @@ ProductionChain: PocketWatch Dump at: %d
     self.futureTasks or 0,
     self.globalCount or 0,
     self.ticksWorked or 0,
-    self.emptyTicks or 0,
+    self.emptyTicks or 0
   )
   if method == "file" then
     game.write_file("PocketWatch_log", toLog, true, playerID)
