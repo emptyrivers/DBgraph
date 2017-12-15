@@ -39,8 +39,8 @@ local function Validate(data, format)
   for field, dataType in pairs(validData[format]) do
     local fieldType = type(data[field])
     if fieldType ~= dataType then
-      if dataType == "weaktable" and fieldType == "table" then
-        setmetatable(data[field], weakMt)
+      if dataType == "weaktable"  then
+        data[field] = setmetatable(data[field] or {}, weakMt)
       end
     end
   end
