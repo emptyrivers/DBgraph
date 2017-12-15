@@ -1,3 +1,4 @@
+local Chain = require "modules.Chain"
 require "util"
 local HyperGraph = {}
 
@@ -8,6 +9,7 @@ function HyperGraph:New()
   local hgraph = setmetatable({
     nodes = {},
     edges = {},
+    chains = {},
   }, HyperGraphMt)
   return hgraph
 end
@@ -39,8 +41,6 @@ local function Validate(data, format)
     if fieldType ~= dataType then
       if dataType == "weaktable" and fieldType == "table" then
         setmetatable(data[field], weakMt)
-      else
-        data[field] = setmetatable({}, weakMt)
       end
     end
   end
@@ -51,8 +51,7 @@ end
 function HyperGraph:AddNode(data)
   local node = Validate(data, "node")
   if not node then
-    log "HyperGraph.lua - Warning! Invalid data format on AddNode."
-    return
+    error("HyperGraph.lua! Invalid data format on AddNode.", 2)
   end
   self.nodes[node.id] = node
   node.valid = true
@@ -61,8 +60,7 @@ end
 function HyperGraph:AddEdge(data)
   local edge = Validate(data, "edge")
   if not edge then
-    log "HyperGraph.lua - Warning! Invalid data format on AddEdge."
-    return
+    error("HyperGraph.lua: Invalid data format on AddEdge.", 2)
   end
   local edgeid = edge.id
   for nodeid in pairs(edge.ingredients) do
@@ -71,8 +69,7 @@ function HyperGraph:AddEdge(data)
       node.outflow[edgeid] = edge
       edge.inflow[nodeid] = node
     else
-      log "HyperGraph.lua - Warning! Attempt to add an Edge with an invalid input."
-      return
+      error("HyperGraph.lua: Attempt to add an Edge with an invalid input.", 2)
     end
   end
   for nodeid in pairs(edge.products) do
@@ -81,8 +78,7 @@ function HyperGraph:AddEdge(data)
       node.inflow[edgeid] = edge
       edge.outflow[nodeid] = node
     else
-      log "HyperGraph.lua - Warning! Attempt to add an Edge with an invalid output."
-      return
+      error("HyperGraph.lua: Attempt to add an Edge with an invalid output.", 2)
     end
   end
   self.edges[edgeid] = edge
@@ -145,6 +141,9 @@ function HyperGraph.setmetatables(hgraph)
   for _, edge in pairs(hgraph.edges) do
     setmetatable(edge.inflow, weakMt)
     setmetatable(edge.outflow, weakMt)
+  end
+  for _, chain in pairs(hgraph.chains) do
+    Chain.setmetatables(chain)
   end
   return hgraph
 end
