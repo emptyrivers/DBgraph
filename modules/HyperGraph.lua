@@ -1,19 +1,17 @@
+-- Implementation of HyperGraphs in lua
+
+-- modules
 local Chain = require "modules.Chain"
 require "util"
+
+-- main object
 local HyperGraph = {}
 
+-- metatables
 local HyperGraphMt = { __index = HyperGraph}
 local weakMt = {__mode = "kv"}
 
-function HyperGraph:New()
-  local hgraph = setmetatable({
-    nodes = {},
-    edges = {},
-    chains = {},
-  }, HyperGraphMt)
-  return hgraph
-end
-
+-- helpers
 local validData = {
   node = {
     id = "string",
@@ -32,7 +30,6 @@ local validData = {
   },
 }
 
-
 local function Validate(data, format)
   if type(data) ~= "table" then return end
   data = table.deepcopy(data)
@@ -46,6 +43,45 @@ local function Validate(data, format)
   end
   data.valid = false
   return data
+end
+
+-- pre-runtime scripts
+function HyperGraph:Init()
+  global.fullgraph, global.forcegraphs = self:New(), {}
+  return global.fullgraph, global.forcegraphs
+end
+
+function HyperGraph:Load()
+  for _,graph in pairs(global.forceGraphs) do
+    self.setmetatables(graph)
+  end
+  return HyperGraph.setmetatables(global.fullgraph), global.forcegraphs
+end
+
+-- methods
+function HyperGraph.setmetatables(hgraph)
+  setmetatable(hgraph, HyperGraphMt)
+  for _, node in pairs(hgraph.nodes) do
+    setmetatable(node.inflow, weakMt)
+    setmetatable(node.outflow, weakMt)
+  end
+  for _, edge in pairs(hgraph.edges) do
+    setmetatable(edge.inflow, weakMt)
+    setmetatable(edge.outflow, weakMt)
+  end
+  for _, chain in pairs(hgraph.chains) do
+    Chain.setmetatables(chain)
+  end
+  return hgraph
+end
+
+function HyperGraph:New()
+  local hgraph = HyperGraph.setmetatables({
+    nodes = {},
+    edges = {},
+    chains = {},
+  })
+  return hgraph
 end
 
 function HyperGraph:AddNode(data)
@@ -130,22 +166,6 @@ ProductionChain: HyperGraph Dump at: %d
   elseif method == "log" then
     log(toLog)
   end
-end
-
-function HyperGraph.setmetatables(hgraph)
-  setmetatable(hgraph, HyperGraphMt)
-  for _, node in pairs(hgraph.nodes) do
-    setmetatable(node.inflow, weakMt)
-    setmetatable(node.outflow, weakMt)
-  end
-  for _, edge in pairs(hgraph.edges) do
-    setmetatable(edge.inflow, weakMt)
-    setmetatable(edge.outflow, weakMt)
-  end
-  for _, chain in pairs(hgraph.chains) do
-    Chain.setmetatables(chain)
-  end
-  return hgraph
 end
 
 return HyperGraph

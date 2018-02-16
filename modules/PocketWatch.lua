@@ -1,61 +1,22 @@
---[[
-General Purpose Tick Spreader for Factorio.
+-- Pocketwatch! Spreads work across multiple ticks. Takes control of on_tick
 
-Usage:
-local PocketWatch = require"path.to.PocketWatch"
--- defines the PocketWatch class. The path is relative, as always with require.
 
-PocketWatch.taskMap[id] = <function>
--- teach PocketWatch how to perform a task. Since functions cannot be serialized currently, we can't simply drop function objects (especially closures) into the global table.
--- I recommend that you structure your recursive task functions like so (this creates behavior that is somewhat similar to how coroutines work)
-PocketWatch.taskMap['someTask'] = function(state, ...)
-
-  -- perform some small manipulation to state
-
-  return watch:Do('someTask', state, ...) -- where watch is a PocketWatch Object
-end
-
-global.watch = PocketWatch:New()
--- create a new PocketWatch Object
-
-watch:Do(id, ...)
--- will attempt to call PocketWatch.taskMap[id](...). If the # of tasks performed in the current tick exceeds the
--- task limit, then this will Schedule the task for the next tick, and allow the simulation to continue.
-
-watch.isBlocking = <bool>
--- if isBlocking is true, then PocketWatch will act synchronously and immediately perform all tasks assigned, instead of spreading them across ticks.
-
-watch.taskLimit = <uint>
--- maximum # of tasks that a single watch can perform, before it relinquishes control and allows the simulation to continue.
-
-watch:Schedule(task, isOld, sleepTime)
--- schedules a task for later execution (by default on the next tick).
--- The task object must be an array whose first element (the 1 index) maps to a valid function from PocketWatch.taskMap,
--- and the extra information in the task object is what is passed to the task function.
--- The isOld flag causes the task to be placed last in the queue, instead of in the front.
-
-watch.ContinueWork
--- should be registered to on_tick by on_load script, to ensure that desyncs do not occur. Otherwise, this should not be touched.
-
-watch:Dump(method, playerID)
--- dumps stats about the watch to script-output, current-log, or the console, depending on the value of method.
--- "file" sends the dump to script-output, "log" goes to the log, and "console" goes to the console. PlayerID can be specified to force the dump to only occur for one player.
-
-watch:DoTasks(time)
--- Performs tasks scheduled for the specified time. Should not be necessary to explicitly call - on_tick will handle that.
-
-PocketWatch.setmetatables(watch)
--- Call this on_load to ensure that metatables are repaired from the loading process.
---]]
 local PocketWatch = {}
 local watchMt = { __index = PocketWatch }
 
 PocketWatch.isEarly = true
 PocketWatch.taskMap = {}
 
+function PocketWatch:Init()
+  return self:New()
+end
+
+function PocketWatch:Load()
+end
+
 function PocketWatch:New()
   --creates a new Pocketwatch object.
-  local watch = setmetatable({
+  return self.setmetatables({
     taskList = {},
     isBlocking = nil,
     taskLimit = 10,
@@ -65,8 +26,7 @@ function PocketWatch:New()
     futureTasks = 0,
     emptyTicks = 0,
     now = 0,
-  }, watchMt)
-  return watch
+  })
 end
 
 function PocketWatch:Do(id, ...)
@@ -155,6 +115,8 @@ ProductionChain: PocketWatch Dump at: %d
   )
   if method == "file" then
     game.write_file("PocketWatch_log", toLog, true, playerID)
+  elseif method == "newfile" then 
+    game.write_file("PocketWatch_log", toLog, false, playerID)
   elseif method == "console" then
     local print = playerID and game.players[playerID].print or game.print
     print(toLog)
@@ -162,7 +124,6 @@ ProductionChain: PocketWatch Dump at: %d
     log(toLog)
   end
 end
-
 
 function PocketWatch.setmetatables(watch)
   setmetatable(watch, watchMt)

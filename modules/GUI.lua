@@ -19,8 +19,8 @@ local GUI = {
 }
 
 -- metatables
-local guiMt = { __index = GUI }
-
+local guiMt  = { __index = GUI }
+local weakMt = { __mode  = "kv"}
 -- upvalues 
 local get_button_flow                = mod_gui.get_button_flow
 local get_frame_flow                 = mod_gui.get_frame_flow
@@ -66,49 +66,60 @@ function GUI:New(playerID)
   if not player then 
     return 
   else
-    models[player.index] = {
+    local model = {
       gui = player.gui,
-      top     = {
-        element = player.gui.top,
-        indestructible = true,
-        IsVisible = trueFunc,
-      },
-      center  = {
-        element = player.gui.center,
-        indestructible = true,
-        IsVisible = trueFunc,
-      },
-      left    = {
-        element = player.gui.left,
-        indestructible = true,
-        IsVisible = trueFunc,
-      },
+      flatmap = {}, -- flatmap is a weak reference, used only for quickly accessing gui elements
       shown   = true,
     }
+    for _, id in pairs{'top', 'left', 'center'} do
+      local element = player.gui[id]
+      model[id] = {
+        name = id,
+        element = element,
+        indestructible = true,
+        IsVisible = trueFunc,
+        model = model,
+        shown = true,
+      }
+      model.flatmap[id] = model[id]
+    end
+    models[player.index] = model
+    return self.setmetatables(model)
   end
-  return self.setmetatables(models[player.index])
 end
 
+function GUI:Delete(playerID)
+  if not playerID then return end
+  local player = game.players[playerID]
+  if not player then return end
+  models[player.index] = nil
+end
 
 function recursiveMetatable(element) -- helper function
   setmetatable(element, guiMt)
-  for _, child in pairs(element.children) do
-    recurse(child)
+  if element.children then
+    for _, child in pairs(element.children) do
+      recursiveMetatable(child)
+    end
   end
 end
 
-function GUI.setmetables(model)
+function GUI.setmetatables(model)
+  setmetatable(model.flatmap, weakMt)
   for _, id in pairs{'top', 'left', 'center'} do
     local element = model[id]
-    recurse(element)
+    recursiveMetatable(element)
   end
   return model
 end
 
-function GUI:Add(toAdd)
+function GUI:Add(toAdd) -- toAdd is assumed to be a valid datum for LuaGuiElement.add
+  toAdd = table.deepcopy(toAdd)
   toAdd.element = self.element.add()
   self.children[toAdd.name] = toAdd
   toAdd.parent = self
+  toAdd.model  = self.parent.model
+  toAdd.model.flatmap[toAdd.name] = toAdd
   toAdd.children = {}
   return setmetatable(toAdd, guiMt)
 end
@@ -152,6 +163,11 @@ end
 function GUI:IsVisible()
   if not self.shown then return false end
   return self.parent:IsVisible()
+end
+
+
+function GUI:Reset()
+
 end
 
 return GUI
