@@ -172,7 +172,7 @@ function GUI:Toggle()
   return self.shown and self:Hide() or self:Show()
 end
 
-function GUI.Reset(model) 
+function GUI.Reset(model) -- dummy function until i know exactly what to reset to. 
   if not model.gui then return end
 end
 
