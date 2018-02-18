@@ -5,7 +5,7 @@ local mod_gui     = require "mod-gui"
 local util        = require "util"
 local PocketWatch = require "modules.PocketWatch"
 local snippets    = require "modules.snippets"
-local logger       = require "logger"
+local logger      = require "logger"
 
 -- object
 local GUI = {}
@@ -33,10 +33,12 @@ local weakMt = { __mode = "kv" }
 local timer = PocketWatch:New("gui")
 
 -- future upvalues for init/load
+local models
 
 -- Init/load/config scripts
 function GUI:Init()
   global.models = {}
+  models = global.models
   return global.models
 end
 
@@ -44,6 +46,7 @@ function GUI:Load()
   for _,model in pairs(global.models) do
     self:setmetatable(model)
   end
+  models = global.models
   return global.models
 end
 
@@ -55,6 +58,22 @@ function GUI:OnConfigurationChanged()
 end
 
 -- methods
+function GUI.respond(event)
+  local model = models[event.player_index]
+    if not model then
+      logger:log(1, "A gui event occured for a player with a non-existent model", "error")
+    end
+    local element = model._flatmap[event.element.name]
+    if element then
+      logger:log(4,"gui element: "..event.element.name.." has been affected")
+      local response = element[event.name]
+      if response then
+        logger:log(4,"beginning response")
+        return response(element, event)
+      end
+    end
+end
+
 function GUI:setmetatable(model)
   local function recurse(child)
     setmetatable(child, elementMt)
@@ -83,7 +102,7 @@ function GUI:New(playerID)
     model[id] = setmetatable({
       element = player.gui[id],
       shown = true,
-      model = model,
+      gui = model,
       parent = model,
       indestructible = true,
     }, elementMt)
@@ -97,15 +116,18 @@ function GUI:Add(widget)
   local newElement = {
     element = self.add(widget.prototype),
     shown = true,
-    model = self.model,
-    parent = self
+    gui = self.gui,
+    parent = self,
+    OnAdd = widget.OnAdd,
+    OnDestroy = widget.OnDestroy,
+    OnClear = widget.OnClear,
   }
   newElement.shown = newElement.element.style.visible and true or false
   for eventID, response in pairs(widget.responses) do
     newElement[eventID] = response
   end
   rawset(self,newElement.element.name, setmetatable(newElement, elementMt))
-  self.model._flatmap[newElement.name] = self[newElement.name]
+  self.gui._flatmap[newElement.name] = self[newElement.name]
   if newElement.OnAdd then
     newElement:OnAdd(newElement)
   end
@@ -153,4 +175,5 @@ end
 function GUI.Reset(model) 
   if not model.gui then return end
 end
+
 return GUI

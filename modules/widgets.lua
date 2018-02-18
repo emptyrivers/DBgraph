@@ -13,24 +13,26 @@ local modules = {
 local widgets = {}
 
 widgets.TopButton = {
+    indestructible = true,
     prototype = {
         type    = "button",
         name    = "PC_TopButton",
         style   =  mod_gui.button_style,
         caption = "PC",
     },
-    indestructible = true,
+    OnAdd = function(self)
+        local MainFrame = self.gui.left:Add(widgets.MainFrame)
+        MainFrame:Hide()
+    end,
     responses = {
-        OnAdd = function(self)
-            local MainFrame = self.model.left:Add(widgets.MainFrame)
-            MainFrame:Hide()
-        end,
+
         [defines.events.on_gui_click] = function(self, event)
-            self.model.left.PC_MainFrame:Toggle()
+            self.gui.left.PC_MainFrame:Toggle()
         end,
     },
 }
 widgets.MainFrame = {
+    indestructible = true,
     prototype = {
         type = "frame",
         name = "PC_MainFrame",

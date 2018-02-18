@@ -205,22 +205,7 @@ do
     events.on_gui_elem_changed,
     events.on_gui_selection_state_changed,
     events.on_gui_text_changed,
-  },
-  function(event)
-    local model = models[event.player_index]
-    if not model then
-      logger:log(1, "A gui event occured for a player with a non-existent model", "error")
-    end
-    local element = model._flatmap[event.element.name]
-    if element then
-      logger:log(4,"gui element: "..event.element.name.." has been affected")
-      local response = element[event.name]
-      if response then
-        logger:log(4,"beginning response")
-        return response(element, event)
-      end
-    end
-  end)
+  }, modules.GUI.respond)
   --]]
 end
 
