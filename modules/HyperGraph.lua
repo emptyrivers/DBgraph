@@ -2,6 +2,7 @@
 
 -- modules
 local Chain = require "modules.Chain"
+local logger = require "logger"
 require "util"
 
 -- main object
@@ -87,7 +88,7 @@ end
 function HyperGraph:AddNode(data)
   local node = Validate(data, "node")
   if not node then
-    error("HyperGraph.lua! Invalid data format on AddNode.", 2)
+    logger:log(1, "HyperGraph.lua: Invalid data format on AddNode.", "error")
   end
   self.nodes[node.id] = node
   node.valid = true
@@ -96,7 +97,7 @@ end
 function HyperGraph:AddEdge(data)
   local edge = Validate(data, "edge")
   if not edge then
-    error("HyperGraph.lua: Invalid data format on AddEdge.", 2)
+    logger:log(1, "HyperGraph.lua: Invalid data format on AddEdge.", "error")
   end
   local edgeid = edge.id
   for nodeid in pairs(edge.ingredients) do
@@ -105,7 +106,7 @@ function HyperGraph:AddEdge(data)
       node.outflow[edgeid] = edge
       edge.inflow[nodeid] = node
     else
-      error("HyperGraph.lua: Attempt to add an Edge with an invalid input.", 2)
+      logger:log(1, "HyperGraph.lua: Attempt to add an Edge with an invalid input.", "error")
     end
   end
   for nodeid in pairs(edge.products) do
@@ -114,7 +115,7 @@ function HyperGraph:AddEdge(data)
       node.inflow[edgeid] = edge
       edge.outflow[nodeid] = node
     else
-      error("HyperGraph.lua: Attempt to add an Edge with an invalid output.", 2)
+      logger:log(1, "HyperGraph.lua: Attempt to add an Edge with an invalid output.", "error")
     end
   end
   self.edges[edgeid] = edge
@@ -124,12 +125,13 @@ end
 function HyperGraph:RemoveNode(nodeid)
   if self.nodes[nodeid] then
     self.nodes[nodeid].valid = false
-    self.nodes[nodeid] = nil
-    for edgeid, edge in pairs(self.edges) do
-      if edge.inflow[nodeid] or edge.outflow[nodeid] then
-        self:RemoveEdge(nodeid)
-      end
+    for edgeid,edge in pairs(self.nodes[nodeid].inflow) do
+      if edge.valid then self:RemoveEdge(edgeid) end
     end
+    for edgeid,edge in pairs(self.nodes[nodeid].outflow) do
+      if edge.valid then self:RemoveEdge(edgeid) end
+    end
+    self.nodes[nodeid] = nil
   end
 end
 
@@ -154,18 +156,11 @@ function HyperGraph:Dump(method, playerID)
     edge.inflow = nil
     edge.outflow = nil
   end
-  local toLog = ([[----------------------------------------------
-ProductionChain: HyperGraph Dump at: %d
+  local toLog = ([[
+HyperGraph Dump at: %d
 %s
   ]]):format(game and game.tick or 0, serpent.block(graph))
-  if method == "file" then
-    game.write_file("HyperGraph_log", toLog, true, playerID)
-  elseif method == "console" then
-    local print = playerID and game.players[playerID].print or game.print
-    print(toLog)
-  elseif method == "log" then
-    log(toLog)
-  end
+  return toLog
 end
 
 return HyperGraph

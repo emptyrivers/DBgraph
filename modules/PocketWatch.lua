@@ -6,18 +6,29 @@ local watchMt = { __index = PocketWatch }
 
 PocketWatch.isEarly = true
 PocketWatch.taskMap = {}
+PocketWatch.timers = {}
 
 function PocketWatch:Init()
-  return self:New()
+  global.timers = self.timers
+  return timers
 end
 
-function PocketWatch:Load()
+function PocketWatch:Load(id)
+  return setmetatable(global.timers)
 end
 
-function PocketWatch:New()
+function PocketWatch:New(id)
   --creates a new Pocketwatch object.
-  return self.setmetatables({
+  if type(id) ~= 'string' then
+    logger:log(1, "Attempt to create a timer with an invalid id type: "..type(id), "error")
+  end
+  if self.timers[id] then
+    logger:log(2, "Attempt to create a timer that already exists: "..id, "log")
+    return self.timers[id]
+  end
+  local timer = self.setmetatables({
     taskList = {},
+    id = id,
     isBlocking = nil,
     taskLimit = 10,
     taskCount = 0,
@@ -27,6 +38,8 @@ function PocketWatch:New()
     emptyTicks = 0,
     now = 0,
   })
+  self.timers[id] = timer
+  return timer
 end
 
 function PocketWatch:Do(id, ...)
@@ -91,15 +104,19 @@ function PocketWatch:DoTasks(time)
 end
 
 function PocketWatch:ContinueWork(event)
-  self:DoTasks(event.tick)
-  if self.futureTasks == 0 then
+  local futureTasks = 0
+  for _, timer in pairs(self.timers) do
+    timer:DoTasks(event.tick)
+    futureTasks = futureTasks + timer.futureTasks
+  end
+  if futureTasks == 0 then
     script.on_event(defines.events.on_tick, nil)
   end
 end
 
-function PocketWatch:Dump(method, playerID)
-  local toLog = ([[----------------------------------------------
-ProductionChain: PocketWatch Dump at: %d
+function PocketWatch:Dump()
+  local toLog = ([[
+PocketWatch Dump at: %d
 * ID: %s
 * Unfinished tasks:                %d
 * Total Tasks completed:           %d
@@ -113,16 +130,7 @@ ProductionChain: PocketWatch Dump at: %d
     self.ticksWorked or 0,
     self.emptyTicks or 0
   )
-  if method == "file" then
-    game.write_file("PocketWatch_log", toLog, true, playerID)
-  elseif method == "newfile" then 
-    game.write_file("PocketWatch_log", toLog, false, playerID)
-  elseif method == "console" then
-    local print = playerID and game.players[playerID].print or game.print
-    print(toLog)
-  elseif method == "log" then
-    log(toLog)
-  end
+  return toLog
 end
 
 function PocketWatch.setmetatables(watch)

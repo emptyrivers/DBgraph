@@ -1,18 +1,17 @@
 -- modules
-HyperGraph  = require "modules.HyperGraph"
-PocketWatch = require "modules.PocketWatch"
-Chain       = require "modules.Chain"
-GUI         = require "modules.GUI"
-snippets    = require "modules.snippets"
-
+local modules = {
+  HyperGraph   = require "modules.HyperGraph",
+  PocketWatch  = require "modules.PocketWatch",
+  Chain        = require "modules.Chain",
+  GUI          = require "modules.GUI",
+}
+local widgets  = require "modules.widgets"
+local snippets = require "modules.snippets"
+local logger   = require "modules.logger"
 -- upvalues
-local HyperGraph  = HyperGraph
-local PocketWatch = PocketWatch
-local Chain       = Chain
-local GUI         = GUI
-local events      = defines.events
-local taskMap     = PocketWatch.taskMap
-local responses   = GUI.responses
+local events      = defines.events -- because fuck writing defines.events every damn time!
+local taskMap     = modules.PocketWatch.taskMap
+local responses   = modules.GUI.responses
 local snippets    = snippets
 
 -- upvalues to be assigned in init/load
@@ -64,6 +63,11 @@ do
   end
 
   function taskMap.explore(graph, forceName, shouldRebuild)
+    if shouldRebuild then
+      for id in pairs(graph.nodes) do
+        graph:RemoveNode(id)
+      end
+    end
     for name, prototype in pairs(game.item_prototypes) do
       if prototype.valid then
           graph:AddNode({id = name, type = "item"})
@@ -85,8 +89,6 @@ do
             energy = properties.mining_time,
             ingredients = {},
             products = {},
-            inflow = {},
-            outflow = {},
           }
           if properties.required_fluid then
             data.ingredients[properties.required_fluid] = properties.fluid_amount
@@ -108,8 +110,6 @@ do
           energy = recipe.energy,
           ingredients = {},
           products = {},
-          inflow = {},
-          outflow = {},
         }
         data.prereq = techTree._inverted[name]
         for _, ingredient in ipairs(recipe.ingredients) do
@@ -121,7 +121,8 @@ do
         graph:AddEdge(data)
       end
     end
-    return timer:Do("cleanUp", graph)
+    return 
+
   end
 
   function taskMap.createPaths(graph)
@@ -139,25 +140,27 @@ end
 do
   script.on_init(function()
     -- create persistent values
-    fullGraph, forceGraphs = HyperGraph:Init()
-    timer = PocketWatch:Init()
-    models = GUI:Init()
+    fullGraph, forceGraphs = modules.HyperGraph:Init()
+    modules.PocketWatch:Init()
+    timer = modules.PocketWatch:New('control')
+    models = modules.GUI:Init()
     global.techTree = timer:Do("buildTechTree")
+    techTree = global.techTree
     timer:Do("explore",fullGraph)
   end)
 
   script.on_load(function()
-    fullGraph, forceGraphs = HyperGraph:Load()
-    timer  = PocketWatch:Load(global.timer)
+    fullGraph, forceGraphs = modules.HyperGraph:Load()
+    timer  = modules.PocketWatch:Load(global.timer).control
+    models = modules.GUI:Load()
     techTree = global.techTree
-    models = GUI:Load()
     if timer.working then
       script.on_event(events.on_tick, timer.continueWork)
     end
   end)
 
   script.on_configuration_changed(function(event)
-    GUI.OnConfigurationChanged()
+    modules.GUI.OnConfigurationChanged()
     global.techTree = timer:Do("buildTechTree")
     timer:Do("explore", fullGraph, nil, true)
     for force, graph in pairs(global.forceGraphs) do
@@ -173,7 +176,7 @@ do
     end
   end)
 
-  script.on_event( events.on_player_changed_force, function(event)--do i really need this?
+  script.on_event(events.on_player_changed_force, function(event)
     local playerID = event.player_index
     local playerForce = game.players[playerID].force.name
     if not forceGraphs[playerForce] then
@@ -183,24 +186,16 @@ do
   end)
 
   script.on_event(events.on_player_created, function(event)
-    GUI:New(event.player_index)
+    local playermodel = modules.GUI:New(event.player_index)
+    playermodel.top:Add(widgets.TopButton)
   end)
 
   script.on_event(events.on_player_removed, function(event)
-    GUI:Delet(event.player_index)
+    modules.GUI:Delete(event.player_index)
   end)
 
-  script.on_event({
-    events.on_force_created,
-    events.on_forces_merging,
-    }, 
-    function(event)
-      if event.name == events.on_force_created then
-        forceGraphs[event.force.name] = HyperGraph:New()
-        timer:Do('explore', forceGraphs[event.force.name])
-      elseif event.name == events.on_forces_merging then
+  script.on_event(events.on_forces_merging, function(event)
       forceGraphs[event.force.name] = nil
-      end
     end
   )
 ---[[
@@ -212,6 +207,19 @@ do
     events.on_gui_text_changed,
   },
   function(event)
+    local model = models[event.player_index]
+    if not model then
+      logger:log(1, "A gui event occured for a player with a non-existent model", "error")
+    end
+    local element = model._flatmap[event.element.name]
+    if element then
+      logger:log(4,"gui element: "..event.element.name.." has been affected")
+      local response = element[event.name]
+      if response then
+        logger:log(4,"beginning response")
+        return response(element, event)
+      end
+    end
   end)
   --]]
 end

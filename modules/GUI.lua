@@ -5,169 +5,152 @@ local mod_gui     = require "mod-gui"
 local util        = require "util"
 local PocketWatch = require "modules.PocketWatch"
 local snippets    = require "modules.snippets"
+local logger       = require "logger"
 
--- GUI object
-local GUI = {
-  templates = {},
-  responses = {
-    [defines.events.on_gui_click] = {},
-    [defines.events.on_gui_checked_state_changed] = {},
-    [defines.events.on_gui_elem_changed] = {},
-    [defines.events.on_gui_selection_state_changed] = {},
-    [defines.events.on_gui_text_changed] = {},
-  }
-}
+-- object
+local GUI = {}
 
 -- metatables
-local guiMt  = { __index = GUI }
-local weakMt = { __mode  = "kv"}
+local elementMt = { 
+  __index = function(t,k)
+    if type(k) == "number" then -- event ids are numbers
+      logger:log(1, "A gui event occured for a gui element with no response", "error")
+    end
+    return GUI[k] or t.element[k]
+  end,
+  __newindex = function(t,k,v)
+    t.element[k] = v
+  end, 
+}
+local guiMt = { 
+  __index =function(t,k)
+    return GUI[k] or t.gui[k]
+  end
+ }
+local weakMt = { __mode = "kv" }
+
 -- upvalues 
-local get_button_flow                = mod_gui.get_button_flow
-local get_frame_flow                 = mod_gui.get_frame_flow
-local templates                      = GUI.templates
-local responses                      = GUI.responses
-local on_gui_click                   = responses[defines.events.on_gui_click]
-local on_gui_checked_state_changed   = responses[defines.events.on_gui_checked_state_changed]
-local on_gui,elem_changed            = responses[defines.events.on_gui_elem_changed]
-local on_gui_selection_state_changed = responses[defines.events.on_gui_selection_state_changed]
-local on_gui_text_changed            = responses[defines.events.on_gui_text_changed]
-local taskMap                        = PocketWatch.taskMap
-local wipe                           = snippets.wipe
-local trueFunc                       = snippets.trueFunc
+local timer = PocketWatch:New("gui")
 
 -- future upvalues for init/load
-local models, recursiveMetatable, recursiveAdd
 
 -- Init/load/config scripts
 function GUI:Init()
   global.models = {}
-  models = global.models
-  return models
+  return global.models
 end
 
 function GUI:Load()
-  for _, model in pairs(global.models) do
-    self.setmetables(model)
+  for _,model in pairs(global.models) do
+    self:setmetatable(model)
   end
-  return models
+  return global.models
 end
 
 function GUI:OnConfigurationChanged()
-  --there might be things in the gui which are invalid
-  for _,model in pairs(global.guimodels) do
+  for _,model in pairs(global.models) do
     model:Reset()
   end
+  return global.models
 end
 
 -- methods
+function GUI:setmetatable(model)
+  local function recurse(child)
+    setmetatable(child, elementMt)
+    for _, grandchild in pairs(child.children) do
+      recurse(grandchild)
+    end
+  end
+  for _, child in pairs(model.children) do
+    recurse(children)
+  end
+  setmetatable(model._flatmap, weakMt)
+  return setmetatable(model, guiMt)
+end
+
 function GUI:New(playerID)
-  if not playerID then return end
   local player = game.players[playerID]
-  if not player then 
+  if not player then
+    logger:log(1, "Attempt to create a GUI model for a non-existant playerID: "..(playerID or 'nil'), 'error')
     return 
-  else
-    local model = {
-      gui = player.gui,
-      flatmap = {}, -- flatmap is a weak reference, used only for quickly accessing gui elements
-      shown   = true,
-    }
-    for _, id in pairs{'top', 'left', 'center'} do
-      local element = player.gui[id]
-      model[id] = {
-        name = id,
-        element = element,
-        indestructible = true,
-        IsVisible = trueFunc,
-        model = model,
-        shown = true,
-      }
-      model.flatmap[id] = model[id]
-    end
-    models[player.index] = model
-    return self.setmetatables(model)
   end
-end
-
-function GUI:Delete(playerID)
-  if not playerID then return end
-  local player = game.players[playerID]
-  if not player then return end
-  models[player.index] = nil
-end
-
-function recursiveMetatable(element) -- helper function
-  setmetatable(element, guiMt)
-  if element.children then
-    for _, child in pairs(element.children) do
-      recursiveMetatable(child)
-    end
+  local model = setmetatable({
+    gui = player.gui,
+    _flatmap = {},
+  }, guiMt)
+  for _, id in pairs{'top','center','left'} do
+    model[id] = setmetatable({
+      element = player.gui[id],
+      shown = true,
+      model = model,
+      parent = model,
+      indestructible = true,
+    }, elementMt)
+    model._flatmap[id] = model.children[id]
   end
-end
-
-function GUI.setmetatables(model)
-  setmetatable(model.flatmap, weakMt)
-  for _, id in pairs{'top', 'left', 'center'} do
-    local element = model[id]
-    recursiveMetatable(element)
-  end
+  global.models[player.index] = model
   return model
 end
 
-function GUI:Add(toAdd) -- toAdd is assumed to be a valid datum for LuaGuiElement.add
-  toAdd = table.deepcopy(toAdd)
-  toAdd.element = self.element.add()
-  self.children[toAdd.name] = toAdd
-  toAdd.parent = self
-  toAdd.model  = self.parent.model
-  toAdd.model.flatmap[toAdd.name] = toAdd
-  toAdd.children = {}
-  return setmetatable(toAdd, guiMt)
+function GUI:Add(widget)
+  local newElement = {
+    element = self.add(widget.prototype),
+    shown = true,
+    model = self.model,
+    parent = self
+  }
+  newElement.shown = newElement.element.style.visible and true or false
+  for eventID, response in pairs(widget.responses) do
+    newElement[eventID] = response
+  end
+  rawset(self,newElement.element.name, setmetatable(newElement, elementMt))
+  self.model._flatmap[newElement.name] = self[newElement.name]
+  if newElement.OnAdd then
+    newElement:OnAdd(newElement)
+  end
+  return newElement
 end
 
 function GUI:Destroy()
-  if self.indestructible then return end
-  self.parent.children[self.name] = nil
+  if self.indestructible then 
+    logger:log(1, "Attempt to destroy indestructible element: "..self.name, "error")
+    return
+  end
+  if self.OnDestroy then
+    self:OnDestroy()
+  end
+  self.parent[self.name] = nil
   self.element.destroy()
 end
 
 function GUI:Clear()
+  if self.OnClear then
+    self:OnClear()
+  end
+  for _,id in pairs(self.children_names) do
+    self[id] = nil
+  end
   self.element.clear()
-  wipe(self.children)
 end
 
 function GUI:Hide()
   self.shown = false
-  self.element = self.element.destroy()
-end
-
-function recursiveAdd(model)
-  model.parent.element.add(element)
-  for _, child in pairs(model.children) do
-    recursiveAdd(child)
-  end
+  self.element.style.visible = false
+  return true
 end
 
 function GUI:Show()
   self.shown = true
-  recursiveAdd(self)
+  self.element.style.visible = true
+  return true
 end
 
 function GUI:Toggle()
-  if self.shown then
-    self:Hide()
-  else
-    self:Show()
-  end
+  return self.shown and self:Hide() or self:Show()
 end
 
-function GUI:IsVisible()
-  if not self.shown then return false end
-  return self.parent:IsVisible()
+function GUI.Reset(model) 
+  if not model.gui then return end
 end
-
-
-function GUI:Reset()
-
-end
-
 return GUI
