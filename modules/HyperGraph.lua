@@ -148,18 +148,9 @@ end
 
 function HyperGraph:Dump(method, playerID)
   local graph = self:Clone()
-  for _, node in pairs(graph.nodes) do
-    node.inflow = nil
-    node.outflow = nil
-  end
-  for _,edge in pairs(graph.edges) do
-    edge.inflow = nil
-    edge.outflow = nil
-  end
   local toLog = ([[
 HyperGraph Dump at: %d
-%s
-  ]]):format(game and game.tick or 0, serpent.block(graph))
+%s]]):format(game and game.tick or 0, serpent.block(graph, {keyignore = {'inflow', 'outflow'}}))
   return toLog
 end
 
