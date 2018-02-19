@@ -29,6 +29,22 @@ function snippets.redundancyType(prototype)
   end
 end
 
+function snippets.rawcopy(o, seen)
+  seen = seen or {}
+  if o == nil then return nil end
+  if seen[o] then return seen[o] end
 
+
+  local no = {}
+  seen[o] = no
+  --setmetatable(no, deepcopy(getmetatable(o), seen))
+
+  for k, v in next, o, nil do
+    k = (type(k) == 'table') and snippets.rawcopy(k, seen) or k
+    v = (type(v) == 'table') and snippets.rawcopy(v, seen) or v
+    no[k] = v
+  end
+  return no
+end
 
 return snippets
