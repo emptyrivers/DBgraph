@@ -13,8 +13,11 @@ function PocketWatch:Init()
   return timers
 end
 
-function PocketWatch:Load(id)
-  return setmetatable(global.timers)
+function PocketWatch:Load()
+  for _, timer in pairs(global.timers) do
+    self.setmetatable(timer)
+  end
+  return global.timers
 end
 
 function PocketWatch:New(id)
@@ -26,7 +29,7 @@ function PocketWatch:New(id)
     logger:log(2, "Attempt to create a timer that already exists: "..id, "log")
     return self.timers[id]
   end
-  local timer = self.setmetatables({
+  local timer = self.setmetatable({
     taskList = {},
     id = id,
     isBlocking = nil,
@@ -133,7 +136,7 @@ PocketWatch Dump at: %d
   return toLog
 end
 
-function PocketWatch.setmetatables(watch)
+function PocketWatch.setmetatable(watch)
   setmetatable(watch, watchMt)
   return watch
 end

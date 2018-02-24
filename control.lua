@@ -1,3 +1,6 @@
+for k, v in pairs(defines.events) do
+  _G[k] = v -- because fuck writing defines.events.on_whatever_event every damn time!
+end
 -- modules
 local modules = {
   HyperGraph   = require "modules.HyperGraph",
@@ -8,8 +11,8 @@ local modules = {
 local widgets  = require "modules.widgets"
 local snippets = require "modules.snippets"
 local logger   = require "modules.logger"
+local inspect  = require "inspect"
 -- upvalues
-local events      = defines.events -- because fuck writing defines.events every damn time!
 local taskMap     = modules.PocketWatch.taskMap
 local responses   = modules.GUI.responses
 local snippets    = snippets
@@ -17,11 +20,15 @@ local snippets    = snippets
 -- upvalues to be assigned in init/load
 local timer, fullGraph, techTree, forceGraphs, models
 
+-- 
+
+
+
 -- taskMap function definitions
 do
   function taskMap.buildTechTree()
     --we only care about techs that unlock recipes...
-    techTree = { _inverted = {} }
+    techTree = { __inverted = {} }
     local stack = {}
     for name, prototype in pairs(game.technology_prototypes) do
       for _, effect in pairs(prototype.effects) do
@@ -33,10 +40,10 @@ do
               name = name,
               prototype = prototype,
             }
-            techTree._inverted[effect.recipe] = data
+            techTree.__inverted[effect.recipe] = data
             table.insert(stack, data)
           else
-            techTree._inverted[effect.recipe] = techTree[name]
+            techTree.__inverted[effect.recipe] = techTree[name]
             table.insert(techTree[name].unlocks,effect.recipe)
           end
         end
@@ -68,16 +75,6 @@ do
         graph:RemoveNode(id)
       end
     end
-    for name, prototype in pairs(game.item_prototypes) do
-      if prototype.valid then
-          graph:AddNode({id = name, type = "item"})
-      end
-    end
-    for name, prototype in pairs(game.fluid_prototypes) do
-      if prototype.valid then
-          graph:AddNode({id = name, type = "fluid"})
-      end
-    end
     for name, prototype in pairs(game.entity_prototypes) do
       if prototype.valid and prototype.type == "resource" then
           local properties = prototype.mineable_properties
@@ -91,9 +88,16 @@ do
             products = {},
           }
           if properties.required_fluid then
+            if not graph.nodes[properties.required_fluid] then
+              graph:AddNode({type = "fluid", id = properties.required_fluid})
+            end
             data.ingredients[properties.required_fluid] = properties.fluid_amount
           end
           for _, product in ipairs(properties.products) do
+            local name = product.name
+            if not graph.nodes[name] then           
+              graph:AddNode({id = name, type = product.type})
+            end
             data.products[product.name] = product.amount or (product.probability * .5 * (product.amount_min + product.amount_max))
           end
           graph:AddEdge(data)
@@ -111,12 +115,20 @@ do
           ingredients = {},
           products = {},
         }
-        data.prereq = techTree._inverted[name]
+        data.prereq = techTree.__inverted[name]
         for _, ingredient in ipairs(recipe.ingredients) do
-          data.ingredients[ingredient.name] = ingredient.amount
+          local name = ingredient.name
+          if not graph.nodes[name] then           
+            graph:AddNode({id = name, type = ingredient.type})
+          end
+          data.ingredients[name] = ingredient.amount
         end
         for _, product in ipairs(recipe.products) do
-          data.products[product.name] = product.amount or (product.probability * .5 * (product.amount_min + product.amount_max))
+          local name = product.name
+          if not graph.nodes[name] then           
+            graph:AddNode({id = name, type = product.type})
+          end
+          data.products[name] = product.amount or (product.probability * .5 * (product.amount_min + product.amount_max))
         end
         graph:AddEdge(data)
       end
@@ -144,19 +156,23 @@ do
     modules.PocketWatch:Init()
     timer = modules.PocketWatch:New('control')
     models = modules.GUI:Init()
+    widgets.Init()
     global.techTree = timer:Do("buildTechTree")
     techTree = global.techTree
     timer:Do("explore",fullGraph)
+    commands.add_command("pc","test",function() game.print("Hello, World!")end)
   end)
 
   script.on_load(function()
     fullGraph, forceGraphs = modules.HyperGraph:Load()
     timer  = modules.PocketWatch:Load(global.timer).control
     models = modules.GUI:Load()
+    widgets.Load()
     techTree = global.techTree
     if timer.working then
-      script.on_event(events.on_tick, timer.continueWork)
+      script.on_event(on_tick, timer.continueWork)
     end
+    commands.add_command("pc","test",function() game.print("Hello, World!")end)
   end)
 
   script.on_configuration_changed(function(event)
@@ -168,7 +184,7 @@ do
     end
   end)
 
-  script.on_event(events.on_research_finished, function(event)
+  script.on_event(on_research_finished, function(event)
     local unlockedRecipes = techTree[event.research.name] and techTree[event.research.name].unlocks
     local graph =  forceGraphs[event.research.force.name]
     if unlockedRecipes and graph then
@@ -176,7 +192,7 @@ do
     end
   end)
 
-  script.on_event(events.on_player_changed_force, function(event)
+  script.on_event(on_player_changed_force, function(event)
     local playerID = event.player_index
     local playerForce = game.players[playerID].force.name
     if not forceGraphs[playerForce] then
@@ -185,34 +201,35 @@ do
     end
   end)
 
-  script.on_event(events.on_player_created, function(event)
+  script.on_event(on_player_created, function(event)
     local playermodel = modules.GUI:New(event.player_index)
-    playermodel.top:Add(widgets.TopButton)
+    playermodel.top:Add(widgets.Top_Button)
+    logger:log(1,'file',{filePath = "GUI_Log",data = playermodel:Dump(), for_player = event.player_index})
   end)
 
-  script.on_event(events.on_player_removed, function(event)
+  script.on_event(on_player_removed, function(event)
     modules.GUI:Delete(event.player_index)
   end)
 
-  script.on_event(events.on_forces_merging, function(event)
+  script.on_event(on_forces_merging, function(event)
       forceGraphs[event.force.name] = nil
     end
   )
----[[
-  script.on_event({
-    events.on_gui_checked_state_changed,
-    events.on_gui_click,
-    events.on_gui_elem_changed,
-    events.on_gui_selection_state_changed,
-    events.on_gui_text_changed,
-  }, modules.GUI.respond)
-  --]]
 end
 
 
 
 remote.add_interface("rivers",
   {
-    dump = function(...) fullGraph:Dump(...) end,
+    dump = function(...) logger:log(4,'file', {data = fullGraph:Dump(), filePath = "HG_Log", for_player = 1}, 1) end,
+    count = function() 
+      game.print('# of nodes: '..table_size(fullGraph.nodes)) 
+      game.print('# of edges: ' .. table_size(fullGraph.edges)) 
+      local e = 0
+      for _,edge in pairs(fullGraph.edges) do
+        e = e + (table_size(edge.inflow) + table_size(edge.outflow))^2
+      end
+      game.print('weight of edges: '..e)
+    end
   }
 )

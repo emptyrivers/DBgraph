@@ -16,7 +16,7 @@ function logger:log(messageLevel, method, message, playerID)
     elseif messageLevel <= self.level then
         method = (method ~= "error" or self.allowError) and method or self.defaultMethod
         if method == "error" then
-            error(message, 2)
+            error(message, playerID or 2)
         elseif method == "console" then
             playerID = playerID or "emptyrivers"
             local print = (playerID and game.players[playerID] and game.players.print) or game.print
@@ -27,7 +27,7 @@ function logger:log(messageLevel, method, message, playerID)
                 game.print(self.notifyMessage:format("logged", game and game.tick or -1, self:trim(message, 20)))
             end
         elseif method == "file" then
-            game.write_file(message.filePath, message.data, message.append, message.for_player)
+            game.write_file(message.filePath, message.data, message.append, message.for_player or 0)
             if self.alwaysPrintToConsole or self.level >= 5 then
                 game.print(self.notifyMessage:format("written to script_output\\"..mesage.filePath, game and game.tick or -1, self:trim(message.data, 20)))
             end

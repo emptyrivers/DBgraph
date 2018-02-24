@@ -3,6 +3,7 @@
 -- modules
 local Chain = require "modules.Chain"
 local logger = require "logger"
+local inspect = require "inspect"
 require "util"
 
 -- main object
@@ -53,7 +54,7 @@ function HyperGraph:Init()
 end
 
 function HyperGraph:Load()
-  for _,graph in pairs(global.forceGraphs) do
+  for _,graph in pairs(global.forcegraphs) do
     self.setmetatables(graph)
   end
   return HyperGraph.setmetatables(global.fullgraph), global.forcegraphs
@@ -88,7 +89,7 @@ end
 function HyperGraph:AddNode(data)
   local node = Validate(data, "node")
   if not node then
-    logger:log(1, "HyperGraph.lua: Invalid data format on AddNode.", "error")
+    logger:log(1, 'error', "HyperGraph.lua: Invalid data format on AddNode.")
   end
   self.nodes[node.id] = node
   node.valid = true
@@ -97,7 +98,7 @@ end
 function HyperGraph:AddEdge(data)
   local edge = Validate(data, "edge")
   if not edge then
-    logger:log(1, "HyperGraph.lua: Invalid data format on AddEdge.", "error")
+    logger:log(1, 'error', "HyperGraph.lua: Invalid data format on AddEdge.")
   end
   local edgeid = edge.id
   for nodeid in pairs(edge.ingredients) do
@@ -106,7 +107,7 @@ function HyperGraph:AddEdge(data)
       node.outflow[edgeid] = edge
       edge.inflow[nodeid] = node
     else
-      logger:log(1, "HyperGraph.lua: Attempt to add an Edge with an invalid input.", "error")
+      logger:log(1, "error", "HyperGraph.lua: Attempt to add an Edge with an invalid input.",3)
     end
   end
   for nodeid in pairs(edge.products) do
@@ -115,7 +116,7 @@ function HyperGraph:AddEdge(data)
       node.inflow[edgeid] = edge
       edge.outflow[nodeid] = node
     else
-      logger:log(1, "HyperGraph.lua: Attempt to add an Edge with an invalid output.", "error")
+      logger:log(1, 'error', "HyperGraph.lua: Attempt to add an Edge with an invalid output.",3)
     end
   end
   self.edges[edgeid] = edge
@@ -148,9 +149,17 @@ end
 
 function HyperGraph:Dump(method, playerID)
   local graph = self:Clone()
+  for _, node in pairs(graph.nodes) do
+    node.inflow = nil
+    node.outflow = nil
+  end
+  for _, edge in pairs(graph.edges) do
+    edge.inflow = nil
+    edge.outflow = nil
+  end
   local toLog = ([[
 HyperGraph Dump at: %d
-%s]]):format(game and game.tick or 0, serpent.block(graph, {keyignore = {'inflow', 'outflow'}}))
+%s]]):format(game and game.tick or 0, inspect(graph))
   return toLog
 end
 
