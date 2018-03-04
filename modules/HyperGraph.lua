@@ -1,7 +1,6 @@
 -- Implementation of HyperGraphs in lua
 
 -- modules
-local Chain = require "modules.Chain"
 local logger = require "logger"
 local inspect = require "inspect"
 require "util"
