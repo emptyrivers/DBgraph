@@ -7,6 +7,7 @@ local modules = {
   PocketWatch  = require "modules.PocketWatch",
   Chain        = require "modules.Chain",
   GUI          = require "modules.GUI",
+  LPSolve      = require "modules.LPSolve"
 }
 local widgets  = require "modules.widgets"
 local snippets = require "modules.snippets"
@@ -76,10 +77,26 @@ do
       end
     end
     for name, prototype in pairs(game.entity_prototypes) do
-      if prototype.valid and prototype.type == "resource" then
+      if prototype.type == "offshore-pump" then
+        local data = {
+          id = "@PC_SOURCE@"..prototype.fluid.name..'@'..name..'@',
+          isFakeRecipe = true,
+          category = name,
+          enabled = true,
+          energy = 0,
+          ingredients = {["@PC_SOURCE@"..name] = 1},
+          products = { [prototype.fluid.name] = 60 * prototype.pumping_speed},
+        }
+        graph:AddNode({type = "SOURCE", id = "@PC_SOURCE@"..name})
+        if not graph.nodes[prototype.fluid.name] then
+          graph:AddNode({type = "fluid", id = prototype.fluid.name})
+        end
+        graph:AddEdge(data)
+        log(inspect(graph.edges[data.id]))
+      elseif prototype.type == "resource" then
           local properties = prototype.mineable_properties
           local data = {
-            id = name,
+            id = "@PC_SOURCE@" .. name,
             isFakeRecipe = true,
             category = prototype.resource_category,
             enabled = true,
@@ -87,11 +104,15 @@ do
             ingredients = {},
             products = {},
           }
-          if properties.required_fluid then
-            if not graph.nodes[properties.required_fluid] then
+          local sourceNode = properties.required_fluid
+          if sourceNode then
+            if not graph.nodes[sourceNode] then
               graph:AddNode({type = "fluid", id = properties.required_fluid})
             end
             data.ingredients[properties.required_fluid] = properties.fluid_amount
+          else
+            graph:AddNode({type = "SOURCE", id = "@PC_SOURCE@"..name})
+            data.ingredients["@PC_SOURCE@"..name] = 1
           end
           for _, product in ipairs(properties.products) do
             local name = product.name
@@ -116,12 +137,17 @@ do
           products = {},
         }
         data.prereq = techTree.__inverted[name]
-        for _, ingredient in ipairs(recipe.ingredients) do
-          local name = ingredient.name
-          if not graph.nodes[name] then           
-            graph:AddNode({id = name, type = ingredient.type})
+        if table_size(recipe.ingredients) ~= 0 then
+          for _, ingredient in ipairs(recipe.ingredients) do
+            local name = ingredient.name
+            if not graph.nodes[name] then           
+              graph:AddNode({id = name, type = ingredient.type})
+            end
+            data.ingredients[name] = ingredient.amount
           end
-          data.ingredients[name] = ingredient.amount
+        else --this is a source!
+          graph:AddNode({type = "SOURCE", id = "@PC_SOURCE@"..name})
+          data.ingredients["@PC_SOURCE@"..name] = 1
         end
         for _, product in ipairs(recipe.products) do
           local name = product.name
@@ -152,31 +178,31 @@ end
 do
   script.on_init(function()
     -- create persistent values
-    fullGraph, forceGraphs = modules.HyperGraph:Init()
-    modules.PocketWatch:Init()
-    timer = modules.PocketWatch:New('control')
-    models = modules.GUI:Init()
-    widgets.Init()
+    for _, module in pairs(modules) do
+      if module.Init then module:Init() end
+    end
     global.techTree = timer:Do("buildTechTree")
-    techTree = global.techTree
+    fullGraph,        forceGraphs,        timers,        models,        techTree =
+    global.fullGraph, global.forceGraphs, global.timers, global.models, global.techTree
     timer:Do("explore",fullGraph)
     commands.add_command("pc","test",function() game.print("Hello, World!")end)
   end)
 
   script.on_load(function()
-    fullGraph, forceGraphs = modules.HyperGraph:Load()
-    timer  = modules.PocketWatch:Load(global.timer).control
-    models = modules.GUI:Load()
-    widgets.Load()
-    techTree = global.techTree
-    if timer.working then
-      script.on_event(on_tick, timer.continueWork)
+    for _, module in pairs(modules) do if module.Load then module:Load() end end
+    fullGraph,        forceGraphs,        timers,        models,        techTree =
+    global.fullGraph, global.forceGraphs, global.timers, global.models, global.techTree
+    for _, timer in pairs(timers) do
+      if timer.working then
+        script.on_event(on_tick, timer.continueWork)
+        break
+      end
     end
     commands.add_command("pc","test",function() game.print("Hello, World!")end)
   end)
 
   script.on_configuration_changed(function(event)
-    modules.GUI.OnConfigurationChanged()
+    for _, module in pairs(modules) do if module.OnConfigurationChanged then module:OnConfigurationChanged() end end
     global.techTree = timer:Do("buildTechTree")
     timer:Do("explore", fullGraph, nil, true)
     for force, graph in pairs(global.forceGraphs) do
@@ -196,7 +222,7 @@ do
     local playerID = event.player_index
     local playerForce = game.players[playerID].force.name
     if not forceGraphs[playerForce] then
-      forceGraphs[playerForce] = HyperGraph:New()
+      forceGraphs[playerForce] = modules.HyperGraph:New()
       timer:Do('explore', forceGraphs[playerForce], playerForce)
     end
   end)
@@ -205,6 +231,12 @@ do
     local playermodel = modules.GUI:New(event.player_index)
     playermodel.top:Add(widgets.Top_Button)
     logger:log(1,'file',{filePath = "GUI_Log",data = playermodel:Dump(), for_player = event.player_index})
+    local playerForce = game.players[event.player_index].force.name
+    if not forceGraphs[playerForce] then
+      forceGraphs[playerForce] = modules.HyperGraph:New()
+      timer:Do('explore', forceGraphs[playerForce], playerForce)
+     end  
+     logger:log(1,'file',{filePath = "Graph_Log",data = fullGraph:Dump(), for_player = event.player_index})
   end)
 
   script.on_event(on_player_removed, function(event)
