@@ -4,29 +4,22 @@
 require "util"
 local taskMap = require("modules.PocketWatch").taskMap
 
-local Matrix = {}
-local matrixMt = {
-  __index = Matrix,
-  __add = function(a,b)
-    if a.rows ~= b.rows or a.columns ~=b.columns then
-      error("attempt to add mismatching matrices",2)
+
+local function queue()
+  return {
+    first = 0,
+    last  = 1,
+    pop  = function(self) --technically unsafe, but you'd have to try really hard to saturate this queue
+      local val = self[self.first]
+      if val then
+        self[self.first] = nil
+        self.first = self.first + 1
     end
-    local r = Matrix:New(a.rows,b.columns)
-    for i = 1, a.rows do
-      for j = 1, a.columns do
-        r[i][j] = a[i][j] + b[i][j]
-      end
-    end
-    return r
+      return val
   end,
-  __unm = function(a)
-    local r = Matrix:New(a.row,b.columns)
-    for i = 1, a.rows do
-      for j = 1, a.columns do
-        r[i][j] = a[i][j] * -1
-      end
-    end
-    return r
+    push = function(self, toPush)
+      self[self.last] = toPush
+      self.last = self.last + 1
   end,
   __sub = function(a,b)
     if a.rows ~= b.rows or a.columns ~=b.columns then
