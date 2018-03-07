@@ -77,11 +77,10 @@ function taskMap.GetProblemConstants(timer,state,queue,visited)
       for nodeid, inflowNode in pairs (edge.inflow) do
         if not graph.nodes[nodeid] then
           local newNode = graph:AddNode(inflowNode)
-          if not node.visited then
-            queue:push(node)
+          if not newNode.visited then
+            queue:push(newNode)
           end
           AddMapping(state,nodeid)
-          queue:push(newNode)
         end
       end
       graph:AddEdge(edge)
