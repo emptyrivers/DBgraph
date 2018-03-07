@@ -38,7 +38,7 @@ local function Validate(data, format)
     local fieldType = type(data[field])
     if fieldType ~= dataType then
       if dataType == "weaktable"  then
-        data[field] = setmetatable(data[field] or {}, weakMt)
+        data[field] = setmetatable({}, weakMt)
       end
     end
   end
