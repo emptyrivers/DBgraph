@@ -28,8 +28,9 @@ function NewQueue()
 end
 
 function AddMapping(state, toMap)
+  if state.__inverseMap[toMap] then return end
   table.insert(state.__forwardMap, toMap)
-  state.__inverseMap[#state.__forwardMap] = toMap
+  state.__inverseMap[toMap] = #state.__forwardMap
 end
 
 function taskMap.BeginProblem(timer,graph,target,guiElement)
@@ -61,29 +62,27 @@ function taskMap.GetProblemConstants(timer,state,queue,visited)
       return timer:Do("PreSolve",timer,state)
     end
     local node = queue:pop()
-    node.visited = true
+    node.visited = true 
     if node.type == "source" then
       state.source[node.id] = node.cost or 1
     end
     for edgeid, edge in pairs(masterGraph.nodes[node.id].inflow) do
-      AddMapping(state,edgeid)
       table.insert(state.recipes, edge)
       for nodeid, outflowNode in pairs(edge.outflow) do
         if not graph.nodes[nodeid] then
-          AddMapping(state,nodeid)
           graph:AddNode(outflowNode) -- wrong direction, only here to ensure the edge can be added
+          AddMapping(state,nodeid)
         end
       end
       for nodeid, inflowNode in pairs (edge.inflow) do
-        if not graph.nodes[nodeid] then
-          local newNode = graph:AddNode(inflowNode)
-          if not newNode.visited then
-            queue:push(newNode)
-          end
-          AddMapping(state,nodeid)
+        local newNode = graph.nodes[nodeid] or graph:AddNode(inflowNode)
+        AddMapping(state,node.id)
+        if not newNode.visited then
+          queue:push(newNode)
         end
       end
       graph:AddEdge(edge)
+      AddMapping(state,edgeid)
     end
   end
   return timer:Do("GetProblemConstants",timer,state,stack,visited)
