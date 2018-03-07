@@ -167,10 +167,37 @@ function taskMap.SolveChain(timer,target,guiElement)
   return timer:Do("GetProblemConstants",timer,state,stack,{})
 end
 
-function taskMap.GetProblemConstants(timer,state,stack,visited)
+function taskMap.GetProblemConstants(timer,state,queue,visited)
+  local graph,masterGraph = state.graph, state.MasterGraph
   for i = 1,40 do
-    if #stack == 0 then
-      return timer:Do("RegularizeProblem",timer,state)
+    if queue:len() == 0 then
+      return timer:Do("PreSolve",timer,state)
+    end
+    local node = queue:pop()
+    node.visited = true
+    if node.type == "source" then
+      state.source[node.id] = node.cost or 1
+    end
+    for edgeid, edge in pairs(masterGraph.nodes[node.id].inflow) do
+      AddMapping(state,edgeid)
+      table.insert(state.recipes, edge)
+      for nodeid, outflowNode in pairs(edge.outflow) do
+        if not graph.nodes[nodeid] then
+          AddMapping(state,nodeid)
+          graph:AddNode(outflowNode) -- wrong direction, only here to ensure the edge can be added
+        end
+      end
+      for nodeid, inflowNode in pairs (edge.inflow) do
+        if not graph.nodes[nodeid] then
+          local newNode = graph:AddNode(inflowNode)
+          if not node.visited then
+            queue:push(node)
+          end
+          AddMapping(state,nodeid)
+          queue:push(newNode)
+        end
+      end
+      graph:AddEdge(edge)
     end
   end
   return timer:Do("GetProblemConstants",timer,state,stack,visited)
