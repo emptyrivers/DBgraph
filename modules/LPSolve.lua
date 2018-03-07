@@ -1,156 +1,42 @@
 
-
+-- customized implementation of Revised Simplex method
 
 require "util"
 local taskMap = require("modules.PocketWatch").taskMap
+local matrix  = require "modules.matrix" 
 
 
-local function queue()
+function NewQueue()
   return {
     first = 0,
-    last  = 1,
+    last  = 0,
     pop  = function(self) --technically unsafe, but you'd have to try really hard to saturate this queue
+      if self.first == self.last then return end
       local val = self[self.first]
-      if val then
-        self[self.first] = nil
-        self.first = self.first + 1
-    end
+      self[self.first] = nil
+      self.first = self.first + 1
       return val
-  end,
+    end,
     push = function(self, toPush)
       self[self.last] = toPush
       self.last = self.last + 1
-  end,
-  __sub = function(a,b)
-    if a.rows ~= b.rows or a.columns ~=b.columns then
-      error("attempt to add mismatching matrices",2)
-    end
-    local r = Matrix:New(a.rows,b.columns)
-    for i = 1, a.rows do
-      for j = 1, a.columns do
-        r[i][j] = a[i][j] - b[i][j]
-      end
-    end
-    return r
-  end,
-  __mul = function(a,b)
-    if a.columns ~= b.columns then
-      error("attempt to multiply mismatching matrices",2)
-    end
-    local r = Matrix:New(a.rows,b.columns)
-    for i = 1,a.rows do
-      for j = 1,b.columns do
-        local r = 0
-        for k = 1,a.columns do
-          r = r + a[i][k] * a[k][j]
-        end
-        r[i][j] = r
-      end
-    end
-    return r
-  end,
-  __len = function(a) return a.rows end --is this really necessary?
-}
-local weakMt = { __mode = "kv" }
-
-
-function LPSolve:Init()
-  global.matrices = setmetatable({}, weakMt)
-end
-
-function LPSolve:Load()
-  setmetatable(global.matrices, weakMt)
-  for _, matrix in pairs(global.matrices) do
-    setmetatable(matrix, matrixMt)
-  end
-end
-
--- array of rows, each row is the same length
-
-function Matrix:New(rows,columns) -- gives the zero matrix for r,c size
-  local matrix = {
-    rows = rows,
-    columns = coluns,
+    end,
+    len = function(self)
+      return self.last - self.first
+    end,
   }
-  for i=1,rows do
-    local t = {}
-    for j = 1,columns do
-      t[j] = 0
-    end
-    matrix[i] = t
-  end
-  table.insert(global.matrices, matrix)
-  return setmetatable(matrix, matrixMt)
 end
 
-function matrix:AddRows(toAdd)
-  for offset, row in ipairs(toAdd) do
-    if #row > self.columns then
-      for i = self.columns + 1, #row do
-        row[i] = nil
-      end
-    else
-      for i = #row + 1, self.columns do
-        row[i] = 0
-      end
-    end
-    self[self.rows + offset] = row
-  end
-  self.rows = self.rows + #toAdd
-  return self
+function AddMapping(state, toMap)
+  table.insert(state.__forwardMap, toMap)
+  state.__inverseMap[#state.__forwardMap] = toMap
 end
 
-function Matrix:AddColumns(toAdd)
-  for offset, column in ipairs(toAdd) do
-    if #column < self.rows then
-      for i = self.rows + 1, #column do
-        column[i] = nil
-      end
-    else
-      for i = #column + 1, self.rows do
-        column[i] = 0
-      end
-    end
-    local j = self.columns + offset
-    for i, v in ipairs(column) do
-      self[i][j] = v
-    end
-  end
-  self.columns = self.columns + #toAdd
-  return self
-end
-
-function Matrix:RemoveRows(toRemove)
-  for i = #toRemove, 1, -1 do
-    table.remove(self,i)
-  end
-  self.rows = self.rows - #toRemove
-  return self
-end
-
-function Matrix:RemoveColumns(toRemove)
-  for i = #toRemove, 1, -1 do
-    for _, row in ipairs(self.rows) do
-      table.remove(row, i)
-    end
-  end
-  self.columns = self.columns - #toRemove
-  return self
-end
-
-function Matrix:Transpose()
-  local r = self:New(self.columns, self.rows)
-  for i, row in ipairs(self.rows) do
-    for j, val in ipairs(row) do
-      r[j][i] = val
-    end
-  end
-  return r
-end
-
-function taskMap.SolveChain(timer,target,guiElement)
-  -- 
+function taskMap.BeginProblem(timer,graph,target,guiElement)
+  -- first, create problem state which will persist until the problem is solved
   local state = {
+    graph = HyperGraph:New(),
+    masterGraph = graph,
     element = guiElement,
     target = target,
     recipes = {},
@@ -158,11 +44,12 @@ function taskMap.SolveChain(timer,target,guiElement)
     __forwardMap = {}, --maps strings to unique id for this problem
     __inverseMap = {}, --get strings back from unique id
   }
-  local stack = {}
+  local queue = NewQueue()
   for k in pairs(target) do
-    table.insert(state.__inverseMap, k)
-    table.insert(stack,#state.__inverseMap)
-    state.__forwardMap[k] = #state.__inverseMap
+    local node = graph.nodes[k]
+    queue:push(node)
+    state.graph:AddNode(node)
+    AddMapping(state,k)
   end
   return timer:Do("GetProblemConstants",timer,state,stack,{})
 end
@@ -203,16 +90,24 @@ function taskMap.GetProblemConstants(timer,state,queue,visited)
   return timer:Do("GetProblemConstants",timer,state,stack,visited)
 end
 
-function taskMap.RegularizeProblem(timer,state)
+
+function taskMap.PreSolve(timer,state) -- optional? who knows
+  do return logger:log(1,'file', {filePath = "LP_log", data = state.graph:Dump(), for_player = 1}) end
   return timer:Do("LPSolve",timer,state)
 end
-
 function taskMap.LPSolve(timer,state)
   for i = 1,40 do
   end
   return timer:Do("LPSolve",timer,state)
 end
+function taskMap.PostSolve(timer,state)
+  for i = 1,40 do
+    if isDone then
+      return state.element.updateDisplay(state)
+    end
+  end
+  return timer:Do("PostSolve",timer,state)
+end
 
 
-
-return Chain
+return {}
