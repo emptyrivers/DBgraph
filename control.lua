@@ -5,11 +5,10 @@ end
 local modules = {
   HyperGraph   = require "modules.HyperGraph",
   PocketWatch  = require "modules.PocketWatch",
-  Chain        = require "modules.Chain",
   GUI          = require "modules.GUI",
-  LPSolve      = require "modules.LPSolve"
+  LPSolve      = require "modules.LPSolve",
+  widgets      = require "modules.widgets",
 }
-local widgets  = require "modules.widgets"
 local snippets = require "modules.snippets"
 local logger   = require "modules.logger"
 local inspect  = require "inspect"
@@ -19,7 +18,7 @@ local responses   = modules.GUI.responses
 local snippets    = snippets
 
 -- upvalues to be assigned in init/load
-local timer, fullGraph, techTree, forceGraphs, models
+local timers, fullGraph, techTree, forceGraphs, models
 
 -- 
 
@@ -29,7 +28,7 @@ local timer, fullGraph, techTree, forceGraphs, models
 do
   function taskMap.buildTechTree()
     --we only care about techs that unlock recipes...
-    techTree = { __inverted = {} }
+    local techTree = { __inverted = {} }
     local stack = {}
     for name, prototype in pairs(game.technology_prototypes) do
       for _, effect in pairs(prototype.effects) do
@@ -92,7 +91,6 @@ do
           graph:AddNode({type = "fluid", id = prototype.fluid.name})
         end
         graph:AddEdge(data)
-        log(inspect(graph.edges[data.id]))
       elseif prototype.type == "resource" then
           local properties = prototype.mineable_properties
           local data = {
@@ -196,10 +194,12 @@ do
     for _, module in pairs(modules) do
       if module.Init then module:Init() end
     end
-    global.techTree = timer:Do("buildTechTree")
     fullGraph,        forceGraphs,        timers,        models,        techTree =
-    global.fullGraph, global.forceGraphs, global.timers, global.models, global.techTree
-    timer:Do("explore",fullGraph)
+    global.fullGraph, global.forceGraphs, global.timers, global.models
+    timer = modules.PocketWatch:New('main')
+    global.techTree = timers.main:Do("buildTechTree")
+    techTree = global.techTree
+    timers.main:Do("explore",fullGraph)
     commands.add_command("pc","test",function() game.print("Hello, World!")end)
   end)
 
@@ -244,7 +244,7 @@ do
 
   script.on_event(on_player_created, function(event)
     local playermodel = modules.GUI:New(event.player_index)
-    playermodel.top:Add(widgets.Top_Button)
+    playermodel.top:Add(modules.widgets.Top_Button)
     logger:log(1,'file',{filePath = "GUI_Log",data = playermodel:Dump(), for_player = event.player_index})
     local playerForce = game.players[event.player_index].force.name
     if not forceGraphs[playerForce] then

@@ -4,7 +4,6 @@
 local mod_gui = require "mod-gui"
 local logger  = require "modules.logger"
 local HyperGraph = require "modules.HyperGraph"
-local Chain = require "modules.Chain"
 -- object
 local widgets = {}
 

@@ -48,7 +48,7 @@ end
 
 -- pre-runtime scripts
 function HyperGraph:Init()
-  global.fullgraph, global.forcegraphs = self:New(), {}
+  global.fullGraph, global.forceGraphs = self:New(), {}
   return global.fullgraph, global.forcegraphs
 end
 
@@ -88,16 +88,17 @@ end
 function HyperGraph:AddNode(data)
   local node = Validate(data, "node")
   if not node then
-    logger:log(1, 'error', "HyperGraph.lua: Invalid data format on AddNode.")
+    logger:log(1, 'error', "HyperGraph.lua: Invalid data format on AddNode.",3)
   end
   self.nodes[node.id] = node
   node.valid = true
+  return node
 end
 
 function HyperGraph:AddEdge(data)
   local edge = Validate(data, "edge")
   if not edge then
-    logger:log(1, 'error', "HyperGraph.lua: Invalid data format on AddEdge.")
+    logger:log(1, 'error', "HyperGraph.lua: Invalid data format on AddEdge.",3)
   end
   local edgeid = edge.id
   if edge.catalysts then
@@ -110,6 +111,7 @@ function HyperGraph:AddEdge(data)
         edge.outflow[nodeid] = node
       else
         logger:log(1, "error", "HyperGraph.lua: Attempt to add an edge with an invalid catalyst.",3)
+      end
     end
   end
   for nodeid in pairs(edge.ingredients) do
@@ -132,6 +134,7 @@ function HyperGraph:AddEdge(data)
   end
   self.edges[edgeid] = edge
   edge.valid = true
+  return edge
 end
 
 function HyperGraph:RemoveNode(nodeid)
