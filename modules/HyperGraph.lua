@@ -100,6 +100,18 @@ function HyperGraph:AddEdge(data)
     logger:log(1, 'error', "HyperGraph.lua: Invalid data format on AddEdge.")
   end
   local edgeid = edge.id
+  if edge.catalysts then
+    for nodeid in pairs(edge.catalysts) do
+      local node = self.nodes.nodeid
+      if node then
+        node.outflow[edgeid] = edge
+        node.inflow[edgeid] = edge
+        edge.inflow[nodeid] = node
+        edge.outflow[nodeid] = node
+      else
+        logger:log(1, "error", "HyperGraph.lua: Attempt to add an edge with an invalid catalyst.",3)
+    end
+  end
   for nodeid in pairs(edge.ingredients) do
     local node = self.nodes[nodeid]
     if node then

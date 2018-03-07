@@ -156,6 +156,21 @@ do
           end
           data.products[name] = product.amount or (product.probability * .5 * (product.amount_min + product.amount_max))
         end
+        for id, amount in pairs(data.ingredients) do
+          if data.products[id] then
+            data.catalysts = data.catalysts or {}
+            local diff = data.products[id] - amount
+            if diff < 0 then
+              data.catalysts[id] = data.products[id]
+              data.ingredients[id] = -diff
+              data.products[id] = nil
+            else
+              data.products[id] = diff
+              data.ingredients[id] = nil
+              data.catalysts[id] = amount
+            end
+          end
+        end
         graph:AddEdge(data)
       end
     end
