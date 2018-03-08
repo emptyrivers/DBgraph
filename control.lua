@@ -154,7 +154,7 @@ do
           end
           data.products[name] = product.amount or (product.probability * .5 * (product.amount_min + product.amount_max))
         end
-        for id, amount in pairs(data.ingredients) do
+        --[[ for id, amount in pairs(data.ingredients) do
           if data.products[id] then
             data.catalysts = data.catalysts or {}
             local diff = data.products[id] - amount
@@ -169,26 +169,17 @@ do
             end
           end
         end
-        graph:AddEdge(data)
+         ]]graph:AddEdge(data)
       end
     end
     return 
-
   end
-
-  function taskMap.createPaths(graph)
-  end
-
-  function taskMap.updatePaths(graph, recipes)
-  end
-
   function taskMap.nothing()
   end
 
 end
 
 -- script handlers
-do
   script.on_init(function()
     -- create persistent values
     for _, module in pairs(modules) do
@@ -262,7 +253,6 @@ do
       forceGraphs[event.force.name] = nil
     end
   )
-end
 
 
 
