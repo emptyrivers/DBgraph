@@ -4,10 +4,12 @@
 local mod_gui = require "mod-gui"
 local logger  = require "modules.logger"
 local HyperGraph = require "modules.HyperGraph"
+local timers = require("modules.PocketWatch").timers
+
 -- object
 local widgets = {}
 
-local pool 
+local pool, timers
 
 
 -- init/load
@@ -110,7 +112,6 @@ widgets.Left_Frame = {
     methods = {            
         OnAdd = function(self)
             local table = self:Add(widgets.basic_table)
-            table:Add(widgets.search_button)
             table:Add(widgets.help_button)
         end,
     }
@@ -132,12 +133,64 @@ widgets.Center_Frame = {
             local table = self:Add(widgets.basic_table)
             table.draw_horizontal_line_after_headers = true
             table:Add(widgets.search_button)
+            table:Add(widgets.input_form)
             self:Add(widgets.basic_scroll_pane)
         end,
     },
 }
 
 -- misc widgets
+widgets.input_form = {
+    name = "Input_Form",
+    prototype = {
+        type = 'frame',
+        direction = 'horizontal'
+    },
+    methods = {
+        OnAdd = function(self)
+            self:Add(widgets.search_button)
+            self:Add(widgets.input_form_elem_button)
+            self:Add(widgets.input_form_add_button)
+        end
+    },
+    attributes = {
+        target = {},
+    }
+}
+
+widgets.input_form_elem_button = {
+    name = "form_elem_button",
+    prototype = {
+        type = "choose-elem-button",
+        elem_type = "signal",
+    },
+    methods = {
+        [on_gui_elem_changed] = function(self, event)
+            self.parent.target[self.name] = self.elem_value
+        end,
+        OnDestroy = function(self)
+            self.parent.target[self.name] = nil
+        end
+    }
+}
+
+widgets.input_form_add_button = {
+    name = "Add_More_Button",
+    prototype = {
+        type = 'button',
+        tooltip = "click here to add another item",
+        caption = '+',
+    },
+    methods = {
+        [on_gui_click] = function(self, event)
+            self:Destroy()
+        end,
+        OnDestroy = function(self)
+            self.parent:Add(widgets.input_form_elem_button)
+            self.parent:Add(widgets.input_form_add_button)
+        end,
+    }
+}
 widgets.search_button = {
     name = "search_button",
     prototype = {
@@ -147,12 +200,11 @@ widgets.search_button = {
     },
     methods = {
         [on_gui_click] = function(self,event)
-            local itemStack = game.players[self.player_index].cursor_stack
-            if itemStack.valid_for_read then
-                game.players[self.player_index].print{'You clicked with a __1__ in your hand!', itemStack.prototype.localised_name}
-            else
-                game.players[self.player_index].print("Your hands are empty!")
+            local t = {}
+            for _, v in pairs(self.parent.target) do
+                table.insert(t,v)
             end
+            timers.main:Do("BeginProblem", timers.main, global.fullGraph,t,self)
         end,
     }
 }
