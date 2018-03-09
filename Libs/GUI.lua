@@ -1,57 +1,43 @@
--- GUI implementation
-
--- modules
-local mod_gui     = require "mod-gui"
-local util        = require "util"
-local PocketWatch = require "modules.PocketWatch"
-local snippets    = require "modules.snippets"
-local logger      = require "logger"
-local widgets     = require "modules.widgets"
-local inspect     = require "inspect"
--- object
 local GUI = {}
 
+-- requires
+local mod_gui = require "mod-gui"
+require "util"
 -- metatables
 local elementMt = { 
-  __index = function(t,k)
-    if type(k) == "number" then -- event ids are numbers
-      logger:log(1, "A gui event occured for a gui element with no response", "error")
+  __index = function(self,key)
+    if type(key) == "number" then -- event ids are numbers
+      -- error("A gui event occured for a gui element with no response")
+      return -- uncomment the last line if you wish
     end
-    return GUI[k] or t.__element[k]
+    return GUI[key] or self.__element[key]
   end,
-  __newindex = function(t,k,v)
-    t.__element[k] = v
+  __newindex = function(self,key,value)
+    self.__element[key] = value
   end, 
 }
-local weakMt = { __mode = "kv" }
-
--- upvalues 
-local timer = PocketWatch:New("gui")
-
--- future upvalues for init/load
-local models
-
+local namePoolMt = {
+  __index = function(self,key)
+    self[key] = 1
+    return 1
+  end
+}
 -- Init/load/config scripts
 function GUI:Init()
+  global.namePool = {}
   global.models = {}
-  models = global.models
-  return global.models
+  return global.models, global.namePool
 end
 
 function GUI:Load()
   for _,model in pairs(global.models) do
     self:setmetatable(model)
   end
-  models = global.models
-  return global.models
+  return global.models, global.namePool
 end
 
 function GUI:OnConfigurationChanged()
-  for id in pairs(models) do
-    models[id] = self:New(id)
-    models[id].top:Add(widgets.TopButton)
-  end
-  return models
+  --dummy function, fill in with the edits to gui models which best suits your purposes
 end
 
 -- methods
@@ -60,15 +46,14 @@ function GUI:setmetatable(model)
   for _, child in pairs(model.__flatmap) do
     setmetatable(child, elementMt)
   end
-  setmetatable(model.__flatmap, weakMt)
+  setmetatable(global.namePool[model.__element.player.index], namePoolMt)
   return setmetatable(model, elementMt)
 end
 
 function GUI:New(playerID)
   local player = game.players[playerID]
   if not player then
-    logger:log(1, "Attempt to create a GUI model for a non-existant playerID: "..(playerID or 'nil'), 'error')
-    return 
+    error("Attempt to create a GUI model for a non-existant playerID: "..(playerID or 'nil'))
   end
   local model = {
     __element = player.gui,
@@ -86,28 +71,49 @@ function GUI:New(playerID)
     }
     model.__flatmap[id] = model[id]
   end
+  global.namePool[player.index] = {}
   global.models[player.index] = model
   return self:setmetatable(model)
 end
 
+function GUI:Delete(playerID)
+  local index = game.players[playerID].index -- there are more valid playerIDs then necessary, so get the uint version
+  global.namePool[index] = nil
+  global.models[index] = nil
+end
+
+-- helper function for Add
+function AcquireName(name, playerID)  
+  -- we could also release the name on GUI:PreDestroy(), i suppose. But that would require keeping a much larger data structure.
+  -- In practice, this will never cause collisions, since lua uses doubles for numbers, and it would overflow at 2^54
+  local pool = global.namePool[game.players[playerID].index]
+  local id = pool[name]
+  pool[name] = pool[name] + 1
+  return ("GUI_%s:%s:%s"):format(name,playerID,id),id  
+end
+  
 function GUI:Add(widget)
-  local widget = snippets.rawcopy(widget)
-  widget.prototype.name = not widget.unique and  widgets.acquireName(widget.name, self.player_index) or widget.name
+  widget.prototype.name = not widget.unique and  AcquireName(widget.name, self.player_index) or widget.name
   local newElement = {
     prototypeName = widget.name,
     __element = self.add(widget.prototype),
-    shown = true,
-    gui = self.gui,
+    gui = self.gui, 
     parent = self,
   }
   widget.prototype.name = nil
-  newElement.shown = newElement.__element.style.visible and true or false
   if widget.methods then
     for eventID, method in pairs(widget.methods) do
       newElement[eventID] = method
     end
   end
-  rawset(self,newElement.__element.name, setmetatable(newElement, elementMt))
+  if widget.attributes then
+    local attributes = table.deepcopy(attributes)
+    for attributeID, attribute in pairs(attributes) do
+      newElement[attributeID] = attribute
+    end
+  end
+  --rawset because the parent of this new element already has a __newindex method, and it would try to write to the LuaGuiElement, causing an error
+  rawset(self,newElement.__element.name, setmetatable(newElement, elementMt)) 
   self.gui.__flatmap[newElement.name] = self[newElement.name]
   if newElement.OnAdd then
     newElement:OnAdd()
@@ -115,68 +121,65 @@ function GUI:Add(widget)
   return newElement
 end
 
-function GUI:Destroy()
-  if self.indestructible then 
-    logger:log(1, "Attempt to destroy indestructible element: "..self.name, "error")
-    return
-  end
+function GUI:PreDestroy(...)
   if self.OnDestroy then
-    self:OnDestroy()
+    self:OnDestroy(...)
   end
   self.gui.__flatmap[self.name] = nil
-  if self.__element and self.__element.valid then
-    self.parent[self.name] = nil
-    self.__element.destroy()
-    for _, child_name in pairs(self.children_names) do
-      self[child_name]:Destroy()
-    end
+  for _, child_name in pairs(self.children_names) do
+    self[child_name]:PreDestroy(...)
   end
 end
 
-function GUI:Clear()
+function GUI:Destroy(...)
+  if self.indestructible then 
+    error("Attempt to destroy indestructible element: "..self.name)
+  end
+  self:PreDestroy(...)
+  self.parent[self.name] = nil
+  self.__element.destroy()
+end
+
+function GUI:Clear(...)
   if self.OnClear then
-    self:OnClear()
+    self:OnClear(...)
   end
   for _,child_name in pairs(self.children_names) do
-    self[child_name]:Destroy()
+    self[child_name]:PreDestroy(...)
+    self[child_name] = nil
   end
+  self.__element.clear()
 end
 
 function GUI:Hide()
-  self.shown = false
   self.__element.style.visible = false
   return true
 end
 
 function GUI:Show()
-  self.shown = true
   self.__element.style.visible = true
   return true
 end
 
 function GUI:Toggle()
-  return self.shown and self:Hide() or self:Show()
+  return self.__element.style.visible and self:Hide() or self:Show()
 end
 
-function GUI:Dump()
-  local copy = snippets.rawcopy(self)
-  copy.__flatmap = nil
-  return inspect(copy)
-end
 
 --script handler
 script.on_event(
   {
-  on_gui_checked_state_changed,
-  on_gui_click,
-  on_gui_elem_changed,
-  on_gui_selection_state_changed,
-  on_gui_text_changed,
+  defines.events.on_gui_checked_state_changed,
+  defines.events.on_gui_click,
+  defines.events.on_gui_elem_changed,
+  defines.events.on_gui_selection_state_changed,
+  defines.events.on_gui_text_changed,
   }, 
   function(event)
     local model = models[event.player_index]
     if not model then
-      logger:log(1,'error', "A gui event occured for a player with a non-existent model")
+      -- error("A gui event occured for a player with a non-existent model")
+      return
     end
     local element = model.__flatmap[event.element.name]
     if element then
@@ -187,7 +190,5 @@ script.on_event(
     end
   end
 )
-
-
 
 return GUI
