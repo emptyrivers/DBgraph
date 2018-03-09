@@ -57,7 +57,7 @@ end
 function matrix.new(rows, columns)
    local columns = columns or rows
    local M = {}
-   vectors = {}
+   local vectors = {}
    for k, v in pairs(prototype) do
       M[k] = v
    end
@@ -72,45 +72,19 @@ function matrix.new(rows, columns)
 end
 
 
--- Create a matrix from a nested table.
-local function matrixFromTable(t)
-   local rows, columns = #t, #t[1]
-   local M = matrix.new(rows, columns)
-   for i = 1, rows do
-      assert(#t[i] == columns, "columns are not all the same size")
-      for j = 1, columns do
-         M[i][j] = t[i][j]
-      end
-   end
-   return M
+-- Create a matrix from a nested table (column major form).
+local function matrixFromTable(t, r, c)
+    local m = matrix.new(r,c)
+    for j, column in pairs(t) do
+        for i, val in pairs(column) do
+            m[i][j] = val
+        end
+    end
+    return m
 end
 
-
--- Convert strings like "1 2 3; 4 5 6; 7 8 9" into a matrix.
--- This is not efficient for large strings.
-local function matrixFromString(s)
-   local t = {}
-   for r in string.gmatch(s, "[^;]+") do 
-      local row = {}
-      for e in string.gmatch(r, "[^%s]+") do
-         local num = tonumber(e)
-         assert(num ~= nil, "\"" .. e .. "\" is not a number")
-         row[#row + 1] = tonumber(e)
-      end
-      t[#t + 1] = row
-   end
-   return matrixFromTable(t)
-end
-
-
-local function __call(_, a)
-   local M
-   if type(a) == "string" then
-      M = matrixFromString(a)
-   else
-      M = matrixFromTable(a)
-   end
-   return M
+local function __call(_, a,r,c)
+   return matrixFromTable(a,r,c)
 end
 setmetatable(matrix, {__call=__call})
 
@@ -317,6 +291,40 @@ local function map(self, fn)
 end
 prototype.map = map
 
+local function join(self, m, vertical)    
+    assert(vertical and (self.columns == m.columns) or (self.rows == m.rows) , "dimensions do not agree")
+    local M
+    if vertical then
+        local offset = self.rows
+        M = matrix.new(self.rows + m.rows, self.columns)
+        for i, row in pairs(self.vectors) do
+            for j, val in pairs(row) do
+                M[i][j] = val
+            end
+        end
+        for i, row in pairs(m.vectors) do
+            for j, val in pairs(row) do
+                M[i + offset][j] = val
+            end
+        end
+    else
+        local offset = self.columns
+        M = matrix.new(self.rows, self.columns + m.columns)
+        for i, row in pairs(self.vectors) do
+            for j, val in pairs(row) do
+                M[i][j] = val
+            end
+        end
+        for i, row in pairs(m.vectors) do
+            for j, val in pairs(row) do
+                M[i][j + offset] = val
+            end
+        end
+        
+    end
+    return M 
+end
+
 -- Count the number of nonzero elements in a matrix.
 local function nonzero(self)
    local z = 0
@@ -507,6 +515,7 @@ function matrix.qr(A)
    end
    return Q:t(), A
 end
+
 
 
 ----
