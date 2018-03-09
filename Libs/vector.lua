@@ -120,6 +120,52 @@ local function __eq(u, v)
 end
 vectorMt.__eq = __eq
 
+-- let # operator work properly
+local function __len(self)
+    return self.size
+end
+vecotrMt.__len = __len
+
+-- check for positivity
+local function __le(v,n)
+    if type(n) ~= "number" then
+        v,n = n,v
+    end
+    -- check that each element of v is <= n
+    -- if n >= 0, then 0 elements are <= n trivially
+    -- else, 0 elements are > n trivially
+    if n < 0 then --impossible
+        if v:nonzero() < #v then
+            return false
+        end
+    else
+        for i,e in v:elts() do
+            if e > n then return false end
+        end
+    end
+    return true
+end
+vectorMt.__le = __le
+
+local function __lt(v,n)
+    if type(n) ~= "number" then
+        v,n = n,v
+    end
+    -- check that each element of v is <= n
+    -- if n >= 0, then 0 elements are <= n trivially
+    -- else, 0 elements are > n trivially
+    if n <= 0 then 
+        if v:nonzero() < #v then --impossible
+            return false
+        end
+    else
+        for i,e in v:elts() do
+            if e >= n then return false end
+        end
+    end
+    return true
+end
+vectorMt.__lt = __lt
 
 -- find u + v
 local function __add(u, v)
@@ -295,6 +341,10 @@ function vector.norm(v, p)
             res = res + e^p
          end
          res = res^(1/p)
+      elseif p == 1 then
+         for i, e in v:elts() do
+            res = res + math.abs(e)
+         end
       else
          for i, e in v:elts() do
             res = res + math.abs(e^p)
