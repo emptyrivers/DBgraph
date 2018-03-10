@@ -158,13 +158,14 @@ function taskMap.PreSolve(timer,state)
     N[i] = true
   end
   for i = n + 1, n + q do
-    table.insert(A_b, state.constraintFunc[i])
+    table.insert(A_b, state.constraintFuncbyColumns[i])
     table.insert(c_b,state.objFunc[i])
-    B[i] = true
+    B[i] = i-n
   end
-  state.A_b = matrix(A_b,q,q)
+  A_b = matrix(A_b,q,q) -- this is transposed
   local b = state.constraintVec
-  local x = A_b % b
+  local x = A_b % b 
+  state.A_b = A_b  -- still transposed
   state.x = x
   state.B = B
   state.N = N
@@ -177,8 +178,8 @@ function taskMap.LPSolve(timer,state)
   --start with feasible basis B and bfs x
   local B, x = state.B, state.x
   --solve for y in A_b:t() % c_b
-  local A_b, c_b = state.A_b, state.c_b
-  local y = A_b:t() % c_b
+  local A_b, c_b = state.A_b, state.c_b  -- A_b is transposed, no need to transpose it again
+  local y = A_b % c_b
   --compute c_j_next = c_j - vector.dot(A_j,y) for each j in N
   local N = state.N
   local c = state.objFunc
@@ -198,7 +199,7 @@ function taskMap.LPSolve(timer,state)
     return state.element:Update("finished",state)
   end
   -- solve for d in A_b * d = A_k
-  local d = A_b % A_k
+  local d = A_b:t() % A_k --want un-transposed A_b
   if d <= 0 then
     return state.element:Update("unbounded",state)
   end
@@ -218,12 +219,14 @@ function taskMap.LPSolve(timer,state)
   for i = 1, #x do
     if i == k then
       x[i] = t
-    else
+    elseif d[i] ~= 0 then -- no need to do the whole thing if zero
       x[i] = x[i] - d[i] * t
     end
   end
   -- update basis
-  B[k] = true
+  -- also need to change A_b. Store it transposed so that we can edit the row easily enough
+  A_b[B[r]] = A_k
+  B[k] = B[r]
   B[r] = nil
   N[k] = nil
   N[r] = true
