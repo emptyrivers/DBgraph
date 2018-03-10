@@ -196,7 +196,7 @@ function taskMap.LPSolve(timer,state)
     end
   end
   if not k then --optimal solution
-    return state.element:Update("finished",state)
+    return timer:Do("PostSolve",timer,state)
   end
   -- solve for d in A_b * d = A_k
   local d = A_b:t() % A_k --want un-transposed A_b
@@ -223,8 +223,9 @@ function taskMap.LPSolve(timer,state)
       x[i] = x[i] - d[i] * t
     end
   end
-  -- update basis
+  -- update basis and c_b
   -- also need to change A_b. Store it transposed so that we can edit the row easily enough
+  c_b[B[r]] = c[k]
   A_b[B[r]] = A_k
   B[k] = B[r]
   B[r] = nil
@@ -234,11 +235,6 @@ function taskMap.LPSolve(timer,state)
 end
 
 function taskMap.PostSolve(timer,state)
-  for i = 1,40 do
-    if state.isDone then
-      return state.element:Update("finished",state)
-    end
-  end
   return timer:Do("PostSolve",timer,state)
 end
 
