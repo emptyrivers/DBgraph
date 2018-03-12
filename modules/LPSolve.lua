@@ -1,6 +1,9 @@
 
 -- customized implementation of Revised Simplex method
 
+local lib = require "lib"
+local taskMap, matrix, vector = lib.PocketWatch.taskMap, lib.matrix, lib.vector
+
 require "util"
 local taskMap = require("libs.PocketWatch").taskMap
 local matrix  = require "libs.matrix" 
