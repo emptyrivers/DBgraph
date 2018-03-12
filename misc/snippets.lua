@@ -47,4 +47,25 @@ function snippets.rawcopy(o, seen)
   return no
 end
 
+function snippets.NewQueue()
+  return {
+    first = 0,
+    last  = 0,
+    pop  = function(self) --technically unsafe, but you'd have to try really hard to saturate this queue
+      if self.first == self.last then return end
+      local val = self[self.first]
+      self[self.first] = nil
+      self.first = self.first + 1
+      return val
+    end,
+    push = function(self, toPush)
+      self[self.last] = toPush
+      self.last = self.last + 1
+    end,
+    len = function(self)
+      return self.last - self.first
+    end,
+  }
+end
+
 return snippets

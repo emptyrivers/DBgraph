@@ -8,26 +8,8 @@ local vector = require "libs.vector"
 local logger = require "misc.logger"
 local snippets = require "misc.snippets"
 local inspect = require 'inspect'
-function NewQueue()
-  return {
-    first = 0,
-    last  = 0,
-    pop  = function(self) --technically unsafe, but you'd have to try really hard to saturate this queue
-      if self.first == self.last then return end
-      local val = self[self.first]
-      self[self.first] = nil
-      self.first = self.first + 1
-      return val
-    end,
-    push = function(self, toPush)
-      self[self.last] = toPush
-      self.last = self.last + 1
-    end,
-    len = function(self)
-      return self.last - self.first
-    end,
-  }
-end
+
+
 
 function AddMapping(state, toMap,type)
   if state.__forwardMap[type][toMap] then return end
@@ -52,7 +34,7 @@ function taskMap.BeginProblem(timer,graph,target,guiElement)
     __inverseMap = {item = {}, recipe = {},source = {}}, --get strings back from unique id
   }
   logger:log(4,"log","initial state created")
-  local queue = NewQueue()
+  local queue = snippets.NewQueue()
   local b = {}
   for item, constraint in pairs(target) do
     logger:log(4,"log","adding "..item.." to queue")
