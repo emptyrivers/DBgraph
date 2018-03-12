@@ -18,7 +18,7 @@ function AddMapping(state, toMap,type)
   logger:log(4,"log","added " .. toMap .. " to mapping at index " .. state.__forwardMap[type][toMap].. ', type '..type)
 end
 
-function taskMap.BeginProblem(timer,graph,target,guiElement)
+function taskMap.BeginProblem(timer,graph,target,guiElement) --TODO: cleanup
   -- first, create problem state which will persist until the problem is solved
   logger:log(4,"console","beginning problem")
   local state = {
@@ -99,7 +99,7 @@ function taskMap.GetProblemConstants(timer,state,queue,visited) -- try to constr
   return timer:Do("GetProblemConstants", timer, state, queue, visited)
 end
 
-function taskMap.FormalizeProblem(timer,state)
+function taskMap.FormalizeProblem(timer,state) --TODO:cleanup
   local q = #state.__inverseMap.item
   local p = #state.__inverseMap.source
   -- now fix constraintFunc.
