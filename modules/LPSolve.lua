@@ -5,9 +5,6 @@ local lib = require "lib"
 local taskMap, matrix, vector = lib.PocketWatch.taskMap, lib.matrix, lib.vector
 
 require "util"
-local taskMap = require("libs.PocketWatch").taskMap
-local matrix  = require "libs.matrix" 
-local vector = require "libs.vector"
 local logger = require "misc.logger"
 local snippets = require "misc.snippets"
 local inspect = require 'inspect'
@@ -195,6 +192,13 @@ function taskMap.PreSolve1(timer,state)
     end
   end
 
+  if phase == 1 then
+    c = state.objFunc
+    for i, j in pairs(B) do
+      c_b[i] = c[j]
+    end
+  end
+
   return timer:Do("LPSolve",timer,state, c, x, A, b, c_b, A_b, B, N, phase)
 end
 
@@ -207,8 +211,6 @@ function taskMap.PreSolve2(timer,state, c, x, A, b, c_b, A_b, B, N)
     if id:find("^%@PC_ARTIFICIAL%@") then
       x.size = #x - 1
       x[i] = 0
-      c.size = #c - 1
-      c[i] = 0
       A.rows = A.rows - 1
       A.vectors[i] = nil
       for j,v in ipairs(N) do
@@ -221,6 +223,12 @@ function taskMap.PreSolve2(timer,state, c, x, A, b, c_b, A_b, B, N)
       break
     end
   end
+
+  c = state.objFunc
+  for i, j in pairs(B) do
+    c_b[i] = c[j]
+  end
+
   return timer:Do("LPSolve",timer,state, c, x, A, b, c_b, A_b, B, N, 2)
 end
 
@@ -245,7 +253,7 @@ function taskMap.LPSolve(timer,state, c, x, A, b, c_b, A_b, B, N, phase)
         return state.element:Update("infesible",state)
       end
     else
-      return timer:Do("PostSolve",timer,state, c, x, A, b, c_b, A_b, B, N, phase)
+      return state.element:Update("finished", x, state.__inverseMap)
     end
   end
 
@@ -282,11 +290,6 @@ function taskMap.LPSolve(timer,state, c, x, A, b, c_b, A_b, B, N, phase)
   return timer:Do("LPSolve",timer,state, c, x, A, b, c_b, A_b, B, N, phase)
 end
 
-function taskMap.PostSolve(timer,state)
-  log(inspect(state))
-  state.element:Update("finished",state)
-  --return timer:Do("PostSolve",timer,state)
-end
 
 
 return {}
