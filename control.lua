@@ -7,9 +7,11 @@ end
 
 -- modules
 local lib = require "lib"
+local widgets = require "modules.widgets"
 local snippets = require "misc.snippets"
 local logger   = require "misc.logger"
 local inspect  = require "inspect"
+require "modules.LPSolve"
 
 -- upvalues
 local taskMap     = lib.PocketWatch.taskMap
@@ -227,7 +229,7 @@ end)
 
 script.on_event(on_player_created, function(event)
   local playermodel = lib.GUI:New(event.player_index)
-  playermodel.top:Add(modules.widgets.Top_Button)
+  playermodel.top:Add(widgets.Top_Button)
   logger:log(1,'file',{filePath = "GUI_Log",data = playermodel:Dump(), for_player = event.player_index})
   local playerForce = game.players[event.player_index].force.name
   if not forceGraphs[playerForce] then

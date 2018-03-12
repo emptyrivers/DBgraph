@@ -92,6 +92,7 @@ end
 vectorMt.__index = __index
 
 local function __newindex(self, i, e)
+    if not i then error('blah',2) end
    if e ~= 0 then 
       self.elements[i] = e
    else
@@ -124,7 +125,7 @@ vectorMt.__eq = __eq
 local function __len(self)
     return self.size
 end
-vecotrMt.__len = __len
+vectorMt.__len = __len
 
 -- check for positivity
 local function __le(v,n)
@@ -169,7 +170,7 @@ vectorMt.__lt = __lt
 
 -- find u + v
 local function __add(u, v)
-   assert(u.size == v.size, "vectors must both be the same size")
+   if u.size ~= v.size then error("vectors must both be the same size",4) end
    local w = u:copy()
    for i, e in v:elts() do
       w[i] = w[i] + e
@@ -316,7 +317,7 @@ prototype.min = min
 
 -- find the dot product of vectors u and v
 function vector.dot(u, v)
-   assert(u.size == v.size, "vectors must be the same size")
+   if u.size ~= v.size then error("vectors must be the same size",2) end
    local p = 0
    for i, e in u:elts() do
       p = p + e * v[i]

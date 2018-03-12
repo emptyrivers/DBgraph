@@ -3,6 +3,9 @@ local GUI = {}
 -- requires
 local mod_gui = require "mod-gui"
 require "util"
+local inspect = require "inspect"
+local snippets = require "misc.snippets"
+
 -- metatables
 local elementMt = { 
   __index = function(self,key)
@@ -22,10 +25,15 @@ local namePoolMt = {
     return 1
   end
 }
+
+--  future upvalues
+local models, namePool
+
 -- Init/load/config scripts
 function GUI:Init()
   global.namePool = {}
   global.models = {}
+  models, namePool = global.models, global.namePool
   return global.models, global.namePool
 end
 
@@ -33,6 +41,7 @@ function GUI:Load()
   for _,model in pairs(global.models) do
     self:setmetatable(model)
   end
+  models, namePool = global.models, global.namePool
   return global.models, global.namePool
 end
 
@@ -86,7 +95,7 @@ end
 function AcquireName(name, playerID)  
   -- we could also release the name on GUI:PreDestroy(), i suppose. But that would require keeping a much larger data structure.
   -- In practice, this will never cause collisions, since lua uses doubles for numbers, and it would overflow at 2^54
-  local pool = global.namePool[game.players[playerID].index]
+  local pool = namePool[game.players[playerID].index]
   local id = pool[name]
   pool[name] = pool[name] + 1
   return ("GUI_%s:%s:%s"):format(name,playerID,id),id  
@@ -107,7 +116,7 @@ function GUI:Add(widget)
     end
   end
   if widget.attributes then
-    local attributes = table.deepcopy(attributes)
+    local attributes = table.deepcopy(widget.attributes)
     for attributeID, attribute in pairs(attributes) do
       newElement[attributeID] = attribute
     end
@@ -165,6 +174,11 @@ function GUI:Toggle()
   return self.__element.style.visible and self:Hide() or self:Show()
 end
 
+function GUI:Dump()
+  local copy = snippets.rawcopy(self)
+  copy.__flatmap = nil
+  return inspect(copy)
+end
 
 --script handler
 script.on_event(

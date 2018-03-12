@@ -2,38 +2,12 @@
 
 -- modules
 local mod_gui = require "mod-gui"
-local logger  = require "modules.logger"
-local HyperGraph = require "modules.HyperGraph"
-local timers = require("modules.PocketWatch").timers
-
+local logger  = require "misc.logger"
+local HyperGraph = require "libs.HyperGraph"
+local taskMap = require("libs.PocketWatch").taskmap
+local inspect = require "inspect"
 -- object
 local widgets = {}
-
-local pool, timers
-
-
--- init/load
-function widgets.Init()
-    global.pool = {}
-    pool = global.pool
-end
-
-function widgets.Load()
-    pool = global.pool
-end
-
--- helper functions
-function widgets.acquireName(name, playerID)
-    pool[playerID] = pool[playerID] or {}
-    local playerPool = pool[playerID]
-    local id = playerPool[name] or 1
-    playerPool[name] = id + 1
-    return ("PC_%s:%s:%s"):format(name,playerID,id), id
-end
-
-
--- the widgets themselves
-
 
 -- simple widgets - these have no methods, and respond to no events.
 widgets.basic_row = {
@@ -202,10 +176,14 @@ widgets.search_button = {
         [on_gui_click] = function(self,event)
             local t = {}
             for _, v in pairs(self.parent.target) do
-                table.insert(t,v)
+                t[v.name] = 1
             end
-            timers.main:Do("BeginProblem", timers.main, global.fullGraph,t,self)
+            game.print("received request for: "..inspect(t))
+            global.timers.main:Do("BeginProblem", global.timers.main, global.fullGraph,t,self)
         end,
+        Update = function(self,result, reason)
+            game.print(result)
+        end
     }
 }
 

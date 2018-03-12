@@ -1,7 +1,7 @@
 -- Implementation of HyperGraphs in lua
 
 -- modules
-local logger = require "logger"
+local logger = require "misc.logger"
 local inspect = require "inspect"
 require "util"
 
@@ -103,7 +103,7 @@ function HyperGraph:AddEdge(data)
   local edgeid = edge.id
   if edge.catalysts then
     for nodeid in pairs(edge.catalysts) do
-      local node = self.nodes.nodeid
+      local node = self.nodes[nodeid]
       if node then
         node.outflow[edgeid] = edge
         node.inflow[edgeid] = edge

@@ -29,8 +29,8 @@
 --                   [rows] = vector } }
 
 
-local vector = require "modules.vector"
-
+local vector = require "libs.vector"
+local inspect = require "inspect"
 local matrix = {}
 local matrixMt = {}
 local weakMt = {__mode = "kv"}
@@ -77,7 +77,11 @@ local function matrixFromTable(t, r, c)
     local m = matrix.new(r,c)
     for j, column in pairs(t) do
         for i, val in pairs(column) do
-            m[i][j] = val
+            if type(m[j]) ~= 'table' then 
+                log(inspect(column))
+                error("invalid vector type at: "..i..','..j..','..r..','..c,2) 
+            end
+            m[j][i] = val
         end
     end
     return m
@@ -175,14 +179,27 @@ local function smmul(c, A)
 end
 
 local function mvmul(A, v)
-   assert(A.columns == v.size, "inner dimensions must agree")
+   if A.columns ~= v.size then 
+    log('\n'..tostring(A)..'\n'..tostring(v))
+    error( "inner dimensions must agree",3) 
+   end
    local w = vector.new(A.rows)
    for i, u in A:vects() do
       w[i] = vector.dot(u, v)
    end
    return w
 end
-
+local function vmmul(v,A)
+   if A.rows ~= v.size then 
+    log('\n'..tostring(A)..'\n'..tostring(v))
+    error( "inner dimensions must agree",3) 
+   end
+   local w = vector.new(A.columns)
+   for i,u in A:vects() do
+    w[i] = vector.dot(v,u)
+   end
+   return w
+end
 -- Uses the textbook column flipping algorithm, but does skip over
 -- elements that are zero.
 local function mmmul(A, B)
@@ -208,6 +225,8 @@ local function __mul(a, b)
       c = smmul(b, a) -- scalar multiplication is commutative
    elseif type(b) == "table" and b.type == "vector" then
       c = mvmul(a, b)
+   elseif type(a) == "table" and a.type == "vector" then
+      c = vmmul(a,b)
    elseif type(a) == "table" and type(b) == "table" and a.type == "matrix" and b.type == "matrix" then
       c = mmmul(a, b)
    else 
@@ -231,7 +250,7 @@ local function __tostring(self)
    local max = 0
    local digits = 4 -- how many digits to print for each entry
    local padding = 2 -- how much padding between entries
-   if rows <= 8 and columns <= 20 then
+   if rows <= 100 and columns <= 100 then
       for i = 1, rows do
          s[i] = {}
          for j = 1, columns do
@@ -340,6 +359,10 @@ local function transpose(self)
    local M = matrix.new(self.columns, self.rows)
    for i, v in self:vects() do
       for j, e in v:elts() do
+        if not M[j] then 
+            log('attempt to assign value: '..e..'from:'..i..','..j..' to:\n'..tostring(M))
+            error('missing vector #'..j,2) 
+        end
          M[j][i] = e
       end
    end
@@ -525,6 +548,7 @@ end
 -- solve Ax = b using gaussian elimination with parital pivoting
 -- returns x, the vector of solutions
 function matrix.gepp(A, b)
+    assert(A:nonzero() > 0, "cannot % the zero matrix")
    local rows, columns = A.rows, A.columns
    -- make a copy of A, otherwise the algorithm will modify the A that was 
    -- passed in.
@@ -550,6 +574,11 @@ function matrix.gepp(A, b)
       lambda[k], lambda[imax] = lambda[imax], lambda[k]
       -- calculate the multipliers
       for i = k + 1, rows do
+        if not A[i] then 
+            error('missing vector i #:'..i,2) 
+        elseif not A[k] then
+            error('missing vector k #:'..k..' '..i,2) 
+        end
          A[i][k] = A[i][k] / A[k][k]
       end
       -- update A
