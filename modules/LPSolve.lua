@@ -125,7 +125,6 @@ function taskMap.FormalizeProblem(timer,state)
   local u_it = state.u_it
   local n = #state.__inverseMap.recipe
   local recipetoint = state.__forwardMap.recipe
-  -- now constraintVec is ripe for solving
   for i = 1,q do
     local id = "@PC_SLACK@"..i
     AddMapping(state,id,'recipe')
@@ -168,137 +167,134 @@ function taskMap.FormalizeProblem(timer,state)
 end
 
 function taskMap.PreSolve1(timer,state) 
-  -- problem is formalized, prepare for phase 1
-  -- introduce artificial variables, such that we solve:
-  -- min z
-  -- sub. to A*x` = b, where x is expanded to be (x s z), s being our slack (already added)
-  -- this corresponds to adding the columns of the qxq id matrix to our constraint func, and then getting
-  -- the initial bfs of z = b, x = 0
-  -- how big should z be? as big as b
-  local n = state.constraintFunc.rows
-  log('we need to find a bfs for this constraint:\n'..tostring(state.constraintFunc:t()))
-  local b = state.constraintVec:copy()
+
+  local n,m = state.constraintFunc:size()
+  local recipetoint = state.__forwardMap.recipe
+
+  local b, A = state.constraintVec:copy(),state.constraintFunc:copy()
   local q = b.size
-  local x = vector.new(n + q)
-  local c = vector.new(n + q)
-  local c_b = vector.new(q)
-  local A = state.constraintFunc:copy() -- remember, this representation is transposed
-  A.rows = n + q
-  local A_b = matrix.new(q,q)
-  local basis = {}
-  local nonbasis = {}
-  A.rows = n + q
+  local x, c, c_b, A_b = vector.new(n + q), vector.new(n + q), vector.new(q),  matrix.new(q,q)
+  local B, N = {}, {}
+
+  local artCounter, phase,isBasis = 1, 2, {}
   for i=1, q do
-    basis[i] = i + n
-    x[i + n] = b[i]
-    c[i + n] = 1
+    local id
+    if b[i] ~= 0 and ((b[i] > 0) ~= (A[i + m][i] > 0)) then
+      phase = 1
+      local newVar = '@PC_ARTIFICIAL@'..artCounter
+      AddMapping(state,newVar,'recipe')
+      id = recipetoint[newVar]
+      artCounter = artCounter + 1
+      local v = vector.new(q)
+      v[i] = 1
+      A.vectors[id] = v
+      A_b.vectors[id] = v
+      A.rows = A.rows + 1
+    else
+      id = recipetoint["@PC_SLACK@"..i]
+    end 
+    isBasis[id] = true
+    B[i] = id
+    x[id] = b[i]
+    c[id] = 1
     c_b[i] = 1
-    c[i + n] = 1
-    local v = vector.new(q)
-    v[i] = 1
-    A.vectors[i + n] = v
-    A_b.vectors[i] = v
-    AddMapping(state,'@PC_ARTIFICIAL@'..i,'recipe')
+    c[id] = 1
   end
-  log('A:\n'..tostring(A:t())..'\nA_b:\n'..tostring(A_b))
-  for i = 1, n do
-    nonbasis[i] = i
+
+
+  local id = 1
+  for i = 1, A.rows do
+    if not isBasis[i] then
+      N[i] = id
+      id = id + 1
+    end
   end
-  -- so now, x is a bfs, A is the full matrix constraint,
-  -- c is the obj, b the vector constraint, A_b our basis for the bfs
-  local phase1 = {
-    x = x,
-    c = c,
-    c_b = c_b,
-    A_b = A_b,
-    basis = basis,
-    nonbasis = nonbasis,
-    b = b,
-    A = A,
-    A_b = A_b,
-    state = state,
-    phase = 1
-  }
-  return timer:Do("LPSolve",timer,phase1)
+
+  return timer:Do("LPSolve",timer,state, c, x, A, b, c_b, A_b, B, N, phase)
 end
 
 
+function taskMap.PreSolve2(timer,state, c, x, A, b, c_b, A_b, B, N)
 
-
-function taskMap.LPSolve(timer,state)
-  --start with feasible basis B and bfs x
-  log'begin another iteration'
-  local B, x, c = state.basis, state.x, state.c
-  log('current best: '..tostring(x)..' with score: '..x * c)
-  --solve for y in A_b:t() % c_b
-  local A_b, c_b = state.A_b, state.c_b  -- A_b is transposed, no need to transpose it again
-  local y = A_b % c_b
-  --compute c_j_next = c_j - vector.dot(A_j,y) for each j in N
-  local N = state.nonbasis
-  local c = state.c
-  local enteringIndex, A_k
-  local A = state.A
-  for j in pairs(N) do
-    local c_j = c[j]
-    local A_j = A[j]
-    local c_j_next = c_j - vector.dot(A_j,y)
-    if c_j_next < 0 then
-      log('new entering variable: '..j.. ' which corresponds to x_'..N[j])
-      enteringIndex = j --k is entering variable
-      A_k = A_j
+  local inttorecipe = state.__inverseMap.recipe
+  for i = #x, 1, -1 do
+    local id = inttorecipe[i]
+    if id:find("^%@PC_ARTIFICIAL%@") then
+      x.size = #x - 1
+      x[i] = 0
+      c.size = #c - 1
+      c[i] = 0
+      A.rows = A.rows - 1
+      A.vectors[i] = nil
+      for j,v in ipairs(N) do
+        if v == i then
+          table.remove(N,j)
+          break
+        end
+      end
+    else
       break
     end
   end
-  if not enteringIndex then --optimal solution
-    local t = {}
-    local intToRecipe = state.state.__inverseMap.recipe
-    for i, v in x:elts() do
-      t[intToRecipe[i]] = v
+  return timer:Do("LPSolve",timer,state, c, x, A, b, c_b, A_b, B, N, 2)
+end
+
+function taskMap.LPSolve(timer,state, c, x, A, b, c_b, A_b, B, N, phase)
+
+  -- find entering var
+  local y, k, A_k = A_b % c_b
+  for j in pairs(N) do
+    if c[j] - vector.dot(A[j],y) < 0 then
+      k = j 
+      A_k = A[j]
+      break
     end
-    log('final solution;'..inspect(t))
-    error'done'
+  end
+  
+  -- check for optimality
+  if not k then
     if state.phase == 1 then
-      return timer:Do("PreSolve2",timer,state)
+      if x * c == 0 then
+        return timer:Do("PreSolve2",timer,state, c, x, A, b, c_b, A_b, B, N)
+      else
+        return state.element:Update("infesible",state)
+      end
     else
-      return timer:Do("PostSolve",timer,state)
+      return timer:Do("PostSolve",timer,state, c, x, A, b, c_b, A_b, B, N, phase)
     end
   end
-  -- solve for d in A_b * d = A_k
-  local d = A_b:t() % A_k --want un-transposed A_b
-  if d <= 0 then
-    return state.element:Update("unbounded",state)
-  end
-  -- compute min ratio to find leaving variable
-  local t,leavingIndex = math.huge
-  log('searching for the best improvement:')
-  log('x = '..tostring(x))
-  log('d = '..tostring(d))
+
+  -- find leaving var
+  local d,u,t,r = A_b:t() % A_k, true, math.huge
   for i,e in d:elts() do
     if e > 0  then
+      u = false
       local ratio = x[B[i]]/e
       if ratio < t then
         t = ratio
-        leavingIndex = i
-        log('new leaving variable: '..i.. ' which corresponds to x_'..B[i])
-        log('maximum increase to x_'..N[enteringIndex].. ' is '..t)
+        r = i
       end
     end
   end
-  -- k is entering, r is leaving
-  -- replace x[k] by t and x[i] by x[i] - d[i]t
-  x[N[enteringIndex]] = t
-  for i, i_b in pairs(B) do
-    if d[i] ~= 0 then -- no need to do the whole thing if zero
+
+  -- check for unboundedness
+  if u then 
+    return state.element:Update("unbounded",state)
+  end
+
+  -- update state
+  c_b[r] = c[k]
+  A_b[r] = A_k
+  x[N[k]] = t
+  x[B[r]] = 0
+  B[r], N[k] = N[k], B[r]
+  for i, e in d:elts() do
+    if i ~= k then
       x[i_b] = x[i_b] - d[i] * t
     end
   end
-  -- update basis and c_b
-  -- also need to change A_b. Store it transposed so that we can edit the row easily enough
-  c_b[leavingIndex] = c[enteringIndex]
-  A_b[leavingIndex] = A_k
-  B[leavingIndex], N[enteringIndex] = N[enteringIndex], B[leavingIndex]
-  --state.element:Update("",{})
-  return timer:Do("LPSolve",timer,state)
+
+  return timer:Do("LPSolve",timer,state, c, x, A, b, c_b, A_b, B, N, phase)
 end
 
 function taskMap.PostSolve(timer,state)
