@@ -6,6 +6,7 @@ local libs = {
     GUI = require "libs.GUI",
     vector = require "libs.vector",
     matrix = require "libs.matrix",
+    rational = require "libs.rational"
 }
 
 local lib = {}

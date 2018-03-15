@@ -6,6 +6,8 @@ local logger  = require "misc.logger"
 local HyperGraph = require "libs.HyperGraph"
 local taskMap = require("libs.PocketWatch").taskmap
 local inspect = require "inspect"
+local lib = require "lib"
+local integerize = lib.rational.integerize
 -- object
 local widgets = {}
 
@@ -174,15 +176,24 @@ widgets.search_button = {
     },
     methods = {
         [on_gui_click] = function(self,event)
-            local t = {}
-            for _, v in pairs(self.parent.target) do
-                t[v.name] = 1
+            local t,i = {},1
+            for k, v in pairs(self.parent.target) do
+                t[v.name] = i
+                i = i + 1
             end
             game.print("received request for: "..inspect(t))
             global.timers.main:Do("BeginProblem", global.timers.main, global.fullGraph,t,self)
         end,
-        Update = function(self,result, reason)
+        Update = function(self,result, solution, dictionary)
             game.print(result)
+            if result == "finished" then
+                local t = {}
+                local inttorecipe = dictionary.recipe
+                for i,v in solution:elts() do
+                    t[inttorecipe[i]] = tostring(v)
+                end
+                log(inspect(t))        
+            end
         end
     }
 }

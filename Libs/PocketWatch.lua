@@ -3,8 +3,8 @@
 
 local PocketWatch = {}
 local watchMt = { __index = PocketWatch }
+local inspect = require 'inspect'
 
-PocketWatch.isEarly = true
 PocketWatch.taskMap = {}
 PocketWatch.timers = {}
 
@@ -33,7 +33,7 @@ function PocketWatch:New(id)
     taskList = {},
     id = id,
     isBlocking = nil,
-    taskLimit = 10,
+    taskLimit = 1,
     taskCount = 0,
     globalCount = 0,
     ticksWorked = 0,
@@ -64,13 +64,13 @@ function PocketWatch:Do(id, ...)
 end
 
 function PocketWatch:Schedule(task, old, sleepTime)
-  local interval, taskList = sleepTime or 1
-  if not self.taskList[self.now + interval] then
-    self.taskList[self.now + interval] = {}
+  local nextTick, taskList = game.tick + (sleepTime or 1)
+  if not self.taskList[nextTick] then
+    self.taskList[nextTick] = {}
   end
-  taskList = self.taskList[self.now + interval]
+  taskList = self.taskList[nextTick]
   if old then
-    table.insert(taskList, interval, task)
+    table.insert(taskList, 1, task)
   else
     self.futureTasks = self.futureTasks + 1
     table.insert(taskList, task)
@@ -80,21 +80,21 @@ function PocketWatch:Schedule(task, old, sleepTime)
   end
 end
 
-function PocketWatch:DoTasks(time)
-  if not time then return end
+function PocketWatch:DoTasks()
+  local now = game.tick
   local tooBusy
-  self.now = time
   self.globalCount = self.globalCount + self.taskCount
   self.taskCount = 0
-  self.isEarly = false
-  local tasks = self.taskList[self.now]
-  for _, task in ipairs(self.tasks) do
-    if self.taskCount < self.taskLimit then
-      self.futureTasks = self.futureTasks - 1
-      self:Do(unpack(task))
-    else
-      tooBusy = true
-      self:Schedule(task, true)
+  local tasks = self.taskList[now]
+  if tasks then
+    for _, task in ipairs(tasks) do
+      if self.taskCount < self.taskLimit then
+        self.futureTasks = self.futureTasks - 1
+        self:Do(unpack(task))
+      else
+        tooBusy = true
+        self:Schedule(task, true)
+      end
     end
   end
   if self.taskCount > 0 then
@@ -103,13 +103,13 @@ function PocketWatch:DoTasks(time)
     self.emptyTicks = self.emptyTicks + 1
   end
   self.working = tooBusy
-  self.taskList[self.now] = nil
+  self.taskList[now] = nil
 end
 
 function PocketWatch:ContinueWork(event)
   local futureTasks = 0
-  for _, timer in pairs(self.timers) do
-    timer:DoTasks(event.tick)
+  for _, timer in pairs(PocketWatch.timers) do
+    timer:DoTasks(game.tick)
     futureTasks = futureTasks + timer.futureTasks
   end
   if futureTasks == 0 then

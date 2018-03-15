@@ -31,15 +31,19 @@
 --                    the table already  had a value before being set to 0.
 
 
+
+
 local vector = {}
 local vectorMt = {}
 local weakMt = {__mode = "kv"}
 local prototype = {size = 0, type = "vector"}
-
+local rational = require "libs.rational"
+local zero = rational.zero
 --**ADDED BY RIVERS**
 
 function vector:Init()
     global.vectors = setmetatable({}, weakMt)
+    global.vectorCount = 0
 end
 function vector:Load()
     for _, vector in pairs(global.vectors) do
@@ -64,9 +68,9 @@ function vector.new(size, elements)
    setmetatable(x, vectorMt)
    x.size = size
    for i, e in pairs(elements) do
-      x[i] = e
+      x[i] = rational(e)
    end
-   table.insert(global.vectors, x)
+   global.vectors[global.vectorCount] = x
    return x
 end
 
@@ -87,12 +91,14 @@ setmetatable(vector, {__call=__call})
 ----
 
 local function __index(self, i)
-   return self.elements[i] or 0
+   return self.elements[i] or zero
 end
 vectorMt.__index = __index
 
 local function __newindex(self, i, e)
-    if not i then error('blah',2) end
+   if type(e) == 'number' then
+      e = rational(e)
+   end
    if e ~= 0 then 
       self.elements[i] = e
    else
@@ -180,6 +186,10 @@ end
 vectorMt.__add = __add
 
 
+local function __concat(A,v)
+    return tostring(A)..tostring(v)
+end
+vectorMt.__concat = __concat
 -- find u - v
 local function __sub(u, v)
    assert(u.size == v.size, "vectors must both be the same size")
@@ -191,7 +201,14 @@ local function __sub(u, v)
 end
 vectorMt.__sub = __sub
 
-
+local function __unm(v)
+    v = v:copy()
+    for i, e in v:elts() do
+        v[i] = -e
+    end
+    return v
+end
+vectorMt.__unm = __unm
 -- multiply vector v by a scalar or vector c
 local function __mul(c, v)
    local w
@@ -200,15 +217,23 @@ local function __mul(c, v)
       for i, e in v:elts() do
          w[i] = c * e
       end
-   elseif type(v) == "number" then 
-      -- handle the case where c is a vector and v is a scalar
-      w = __mul(v, c)
-   else
-      w = 0
+   elseif type(v) == "number" or v.type == "rational" then 
+      w = vector.new(c.size)
+      for i, e in c:elts() do
+         w[i] = v * e
+      end
+    elseif v.type == "matrix" then
+        assert(v.rows == c.size, "inner dimensions must agree")
+        w = vector.new(c.size)
+        for i, row in v:vects() do
+            for j, val in row:elts() do
+                w[j] = w[j] + val * c[i]
+            end
+        end
+    else
+      w = rational.zero
       for i, e in v:elts() do
-         if c[i] then
-            w = w + c[i] * e
-         end 
+        w = w + c[i] * e
       end
    end
    return w
@@ -232,13 +257,15 @@ vectorMt.__div = __div
 local function __tostring(self)
    local s = {}
    for i = 1, self.size do
-      s[i] = self[i]
+      s[i] = tostring(self[i])
    end
    return "(" .. table.concat(s, ", ") .. ")"
 end
 vectorMt.__tostring = __tostring
 
-
+vectorMt.__concat = function(a,b)
+    return tostring(a) .. tostring(b)
+end
 ----
 ---- prototype methods
 ----
@@ -316,73 +343,8 @@ prototype.min = min
 ----
 
 -- find the dot product of vectors u and v
-function vector.dot(u, v)
-   if u.size ~= v.size then error("vectors must be the same size",2) end
-   local p = 0
-   for i, e in u:elts() do
-      p = p + e * v[i]
-   end
-   return p
-end
 
 
--- Calculate various vector norms, the Euclidean norm (2-norm) by default.
--- for the infinity norm, use norm(x, 'inf').
-function vector.norm(v, p)
-   local p = p or 2
-   local res = 0
-   if type(p) == "number" then
-      if p == 2 then 
-         for i, e in v:elts() do
-            res = res + e * e
-         end
-         res = math.sqrt(res)
-      elseif p % 2 == 0 then
-         for i, e in v:elts() do
-            res = res + e^p
-         end
-         res = res^(1/p)
-      elseif p == 1 then
-         for i, e in v:elts() do
-            res = res + math.abs(e)
-         end
-      else
-         for i, e in v:elts() do
-            res = res + math.abs(e^p)
-         end
-         res = res^(1/p)
-      end
-   elseif p == 'inf' then
-      for i, e in v:elts() do
-         local max = math.abs(e)
-         if max > res then res = max end
-      end
-   else
-      error("caluculating that type of norm is not supported")
-   end
-   return res
-end
 
-
--- Create a vector of the given size of all zeros.
-function vector.zeros(size)
-   local v = vector.new(size)
-   return v
-end
-
-
--- Create a vector of the given size of all ones.
-function vector.ones(size)
-   local v = vector.new(size)
-   for i = 1, size do
-	  v[i] = 1
-   end
-   return v
-end
-
-function vector.cosineSimilarity(v1, v2)
-   local cos = (v1 * v2)/(vector.norm(v1) * vector.norm(v2))
-   return cos
-end
 
 return vector

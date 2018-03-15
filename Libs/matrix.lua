@@ -30,6 +30,7 @@
 
 
 local vector = require "libs.vector"
+local rational = require "libs.rational"
 local inspect = require "inspect"
 local matrix = {}
 local matrixMt = {}
@@ -40,6 +41,7 @@ local prototype = {type = "matrix"}
 
 function matrix:Init()
     global.matrices = setmetatable({}, weakMt)
+    global.matrixCount = 0
 end
 
 function matrix:Load()
@@ -62,12 +64,14 @@ function matrix.new(rows, columns)
       M[k] = v
    end
    M.rows, M.columns = rows, columns
+   if type(rows) ~= 'number' then error('????',2) end
    for i = 1, rows do
       vectors[i] = vector.new(columns)
    end
    M.vectors = vectors
    setmetatable(M, matrixMt)
-   table.insert(global.matrices,M)
+   global.matrices[global.matrixCount] = M
+   global.matrixCount = global.matrixCount + 1
    return M
 end
 
@@ -154,6 +158,10 @@ local function __sub(A, B)
 end
 matrixMt.__sub = __sub
 
+local function __concat(A,v)
+    return tostring(A)..tostring(v)
+end
+matrixMt.__concat = __concat
 
 -- matrix multiplication
 
@@ -184,19 +192,13 @@ local function mvmul(A, v)
     error( "inner dimensions must agree",3) 
    end
    local w = vector.new(A.rows)
-   for i, u in A:vects() do
-      w[i] = vector.dot(u, v)
-   end
-   return w
-end
-local function vmmul(v,A)
-   if A.rows ~= v.size then 
-    log('\n'..tostring(A)..'\n'..tostring(v))
-    error( "inner dimensions must agree",3) 
-   end
-   local w = vector.new(A.columns)
-   for i,u in A:vects() do
-    w[i] = vector.dot(v,u)
+   for i, row in A:vects() do
+      -- u is a row in A
+      local s = rational.zero
+      for j, val in row:elts() do
+         s = s + v[j] * val
+      end
+      w[i] = s
    end
    return w
 end
@@ -207,7 +209,7 @@ local function mmmul(A, B)
    local C = matrix.new(A.rows, B.columns)
    for i = 1, B.columns do
       for j, v in A:vects() do
-         local p = 0
+         local p = rational.zero
          for k, e in v:elts() do
             p = p + e * B[k][i]
          end
@@ -219,9 +221,9 @@ end
 
 local function __mul(a, b)
    local c
-   if type(a) == "number" then
+   if type(a) == "number" or a.type == "rational" then
       c = smmul(a, b)
-   elseif type(b) == "number" then
+   elseif type(b) == "number" or b.type == "rational" then
       c = smmul(b, a) -- scalar multiplication is commutative
    elseif type(b) == "table" and b.type == "vector" then
       c = mvmul(a, b)
@@ -254,7 +256,7 @@ local function __tostring(self)
       for i = 1, rows do
          s[i] = {}
          for j = 1, columns do
-            local e = string.format("%."..tostring(digits).."g", (self[i][j]))
+            local e = tostring(self[i][j])
             s[i][j] = e
             if #e > max then max = #e end
          end
@@ -266,7 +268,7 @@ local function __tostring(self)
          s[i][columns] = string.format("%"..tostring(max).."s", s[i][columns])
          s[i] = "| "..table.concat(s[i]).." |"
       end
-      s = table.concat(s, "\n")
+      s = '\n'..table.concat(s, "\n")
    else
       s = "matrix ("..rows.."x"..columns.."; "..self:nonzero().." nonzero)"
    end
@@ -275,7 +277,9 @@ end
    
 matrixMt.__tostring = __tostring
 
-
+matrixMt.__concat = function(a,b)
+    return tostring(a)..tostring(b)
+end
 ----
 ---- prototype methods
 ----
@@ -310,39 +314,6 @@ local function map(self, fn)
 end
 prototype.map = map
 
-local function join(self, m, vertical)    
-    assert(vertical and (self.columns == m.columns) or (self.rows == m.rows) , "dimensions do not agree")
-    local M
-    if vertical then
-        local offset = self.rows
-        M = matrix.new(self.rows + m.rows, self.columns)
-        for i, row in pairs(self.vectors) do
-            for j, val in pairs(row) do
-                M[i][j] = val
-            end
-        end
-        for i, row in pairs(m.vectors) do
-            for j, val in pairs(row) do
-                M[i + offset][j] = val
-            end
-        end
-    else
-        local offset = self.columns
-        M = matrix.new(self.rows, self.columns + m.columns)
-        for i, row in pairs(self.vectors) do
-            for j, val in pairs(row) do
-                M[i][j] = val
-            end
-        end
-        for i, row in pairs(m.vectors) do
-            for j, val in pairs(row) do
-                M[i][j + offset] = val
-            end
-        end
-        
-    end
-    return M 
-end
 
 -- Count the number of nonzero elements in a matrix.
 local function nonzero(self)
@@ -462,7 +433,7 @@ function matrix.lu(A)
    local L = matrix.id(rows)
    for i = 1, rows do
       for j = 1, i - 1 do
-         L[i][j], A[i][j] = A[i][j], 0
+         L[i][j], A[i][j] = A[i][j], rational.zero
       end
    end
    return P, L, A
@@ -476,7 +447,7 @@ function matrix.cholesky(A)
    local A = A:copy()
    for i = 1, rows do
       for k = 1, i -1 do
-         A[i][i] = A[i][i] - (A[k][i])^2
+         A[i][i] = A[i][i] - (A[k][i] * A[k][i])
       end
       if A[i][i] <= 0 then 
          error("matrix is not symmetric positive definite")
@@ -492,7 +463,7 @@ function matrix.cholesky(A)
    -- remove entries below the diagonal
    for i = 2, rows do
       for j = 1, i - 1 do
-         A[i][j] = 0
+         A[i][j] = rational.zero
       end
    end
    return A
@@ -549,6 +520,7 @@ end
 -- returns x, the vector of solutions
 function matrix.gepp(A, b)
     assert(A:nonzero() > 0, "cannot % the zero matrix")
+   log('solving Ax = b, A=\n'..tostring(A)..'\nb='..tostring(b))
    local rows, columns = A.rows, A.columns
    -- make a copy of A, otherwise the algorithm will modify the A that was 
    -- passed in.
@@ -562,24 +534,24 @@ function matrix.gepp(A, b)
       local imax = 0
       -- find column pivot positions
       for i = k, rows do
-         local temp = math.abs(A[i][k])
+         local temp = rational.abs(A[i][k])
          if temp > Amax then
             Amax = temp
             imax = i
          end
       end    
-      -- swap rows of A
-      A[k], A[imax] = A[imax], A[k]
-      -- swap entries in lambda to remember pivots
-      lambda[k], lambda[imax] = lambda[imax], lambda[k]
-      -- calculate the multipliers
+      if imax ~= k then
+         -- swap rows of A
+         log('swapping row '..k..' with row '..imax)
+         A[k], A[imax] = A[imax], A[k]
+         -- swap entries in lambda to remember pivots
+         lambda[k], lambda[imax] = lambda[imax], lambda[k]
+         -- calculate the multipliers
+      end
+      local A_kk = A[k][k]
       for i = k + 1, rows do
-        if not A[i] then 
-            error('missing vector i #:'..i,2) 
-        elseif not A[k] then
-            error('missing vector k #:'..k..' '..i,2) 
-        end
-         A[i][k] = A[i][k] / A[k][k]
+         log("A_"..i.."_"..k.." = ".."A_"..i.."_"..k.." / A_"..k.."_"..k.."="..(A[i][k] / A_kk))
+         A[i][k] = A[i][k] / A_kk
       end
       -- update A
       for j = k + 1, rows do
@@ -636,75 +608,9 @@ matrixMt.__mod = matrix.gepp
 function matrix.id(n)
    local M = matrix.new(n, n)
    for i = 1, n do
-      M[i][i] = 1
+      M[i][i] = rational.one
    end
    return M
-end
-
-
--- find the determinant of A
-function matrix.det(A)
-   local rows, columns = A.rows, A.columns
-   assert(rows == columns, "Matrix must be square to find the determinant.")
-   local _, _, L = matrix.lu(A)
-   local d = 1
-   for i = 1, rows do
-      d = d * L[i][i]
-   end
-   if rows % 2 == 0 then 
-      d = -d
-   end
-   return d
-end
-
-
--- Create an mxn matrix with each entry a random number between 0 and
--- 1.
-function matrix.randm(rows, columns)
-   local columns = columns or rows
-   local M = matrix.new(rows, columns)
-   for i = 1, rows do
-      for j = 1, columns do
-         M[i][j] = math.random()
-      end
-   end
-   return M
-end
-
-
--- Create a matrix of the given size with all entries zero.
-function matrix.zeros(rows, columns)
-   local columns = columns or rows
-   return matrix.new(rows, columns)
-end
-
-
--- Create a matrix of the given size with all entries one.
-function matrix.ones(rows, columns)
-   local M = matrix.new(rows, columns)
-   for i = 1, rows do
-	  M[i] = vector.ones(rows)
-   end
-   return M
-end
-
-
--- Find the first eigenvalue of A using the power method.
-function matrix.eig1(A)
-   local rows, columns = size(A)
-   local x0
-   local x1 = vector.ones(columns)
-   local lambda1, lambda2, delta = 1, 2, 100
-   local tolerance = 1e-15
-   local i = 100
-   while delta > tolerance and i > 0 do
-	  x0, x1 = x1, A * x1
-	  lambda0, lambda1 = lambda1, vector.norm(x1) / vector.norm(x0)
-	  delta = math.abs((lambda1 - lambda0) / lambda0)
-	  i = i - 1
-   end
-   if i == 0 then error("eig1 did not converge on a soluton.") end
-   return lambda1
 end
 
 return matrix

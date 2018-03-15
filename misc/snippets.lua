@@ -67,5 +67,19 @@ function snippets.NewQueue()
     end,
   }
 end
+function snippets.regVec(v)
+  for i,e in v:elts() do
+    if math.abs(e) <= 1e-14 then
+      v[i] = 0
+    end
+  end
+  return v
+end
+function snippets.regMatrix(m)
+  for i,v in m:vects() do
+    snippets.regvec(v)
+  end
+  return m
+end
 
 return snippets
