@@ -46,6 +46,14 @@ widgets.basic_scroll_pane = {
     },
 }
 
+widgets.basic_label = {
+    name = "basic_label",
+    prototype = {
+        type = "label",
+        enabled = false,
+        caption = "",
+    }
+}
 
 -- unique widgets (special, have lots of methods usually)
 widgets.Top_Button = {
@@ -108,7 +116,6 @@ widgets.Center_Frame = {
         OnAdd = function(self)
             local table = self:Add(widgets.basic_table)
             table.draw_horizontal_line_after_headers = true
-            table:Add(widgets.search_button)
             table:Add(widgets.input_form)
             self:Add(widgets.basic_scroll_pane)
         end,
@@ -124,9 +131,10 @@ widgets.input_form = {
     },
     methods = {
         OnAdd = function(self)
-            self:Add(widgets.search_button)
+            local search = self:Add(widgets.search_button)
             self:Add(widgets.input_form_elem_button)
             self:Add(widgets.input_form_add_button)
+            search.result_list = self:Add(widgets.input_form_results_list)
         end
     },
     attributes = {
@@ -167,6 +175,30 @@ widgets.input_form_add_button = {
         end,
     }
 }
+widgets.input_form_results_list = {
+  name = "input_form_results_list",
+  prototype = {
+    type = "frame",
+    direction = "vertical",
+  },
+  methods = { 
+    Update = function(self,result, solution, dictionary)
+      self:Clear()
+      game.print(result)
+      if result == "finished" then    
+        local recipetoint = dictionary.recipe
+        for k,v in solution:elts() do
+          local recipe = recipetoint[k]
+          if not recipe:find("^%@PC_SOURCE%@") and not recipe:find("^%@PC_ARTIFICIAL%@") then
+            self:Add(widgets.basic_label).caption = recipe..":"..v
+          end
+        end
+      elseif result == "infeasible" then
+        self:Add(widgets.basic_label).caption = solution.id.." has no valid sources"
+      end
+    end
+  }
+}
 widgets.search_button = {
     name = "search_button",
     prototype = {
@@ -182,19 +214,11 @@ widgets.search_button = {
                 i = i + 1
             end
             game.print("received request for: "..inspect(t))
-            global.timers.main:Do("BeginProblem", global.timers.main, global.fullGraph,t,self)
+            global.timers.main:Do("BeginProblem", global.timers.main, global.fullGraph,t,self.result_list)
         end,
-        Update = function(self,result, solution, dictionary)
-            game.print(result)
-            if result == "finished" then
-                local t = {}
-                local inttorecipe = dictionary.recipe
-                for i,v in solution:elts() do
-                    t[inttorecipe[i]] = tostring(v)
-                end
-                log(inspect(t))        
-            end
-        end
+    },
+    attributes = {
+      result_list = 'table'
     }
 }
 
