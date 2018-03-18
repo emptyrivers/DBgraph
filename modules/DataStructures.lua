@@ -7,7 +7,7 @@ local taskMap = lib.PocketWatch.taskMap
 local rational = lib.rational
 local rationalize = rational.rationalize
 
-function taskMap.buildTechTree(timer,techTree)
+function BuildTechTree()
   --we only care about techs that unlock recipes...
   local techTree = { __inverted = {} }
   local stack = {}
@@ -43,14 +43,14 @@ function taskMap.buildTechTree(timer,techTree)
         tech.prereq[name] = data
         table.insert(stack, techTree[name])
       else
-        tech.prereq[name] = techTree[name]
+        tech.prereq[name] = false
       end
     end
   end
   return techTree
 end
 
-function taskMap.explore(graph, forceName, shouldRebuild)
+function BuildGraph(graph, forceName, shouldRebuild)
   if shouldRebuild then
     for id in pairs(graph.nodes) do
       graph:RemoveNode(id)
@@ -153,7 +153,6 @@ function taskMap.explore(graph, forceName, shouldRebuild)
       graph:AddEdge(data)
     end
   end
-  return 
+  return graph
 end
-function taskMap.nothing()
-end
+
