@@ -38,19 +38,8 @@ local vectorMt = {}
 local weakMt = {__mode = "kv"}
 local prototype = {size = 0, type = "vector"}
 local rational = require "libs.rational"
-local zero = rational.zero
---**ADDED BY RIVERS**
 
-function vector:Init()
-    global.vectors = setmetatable({}, weakMt)
-    global.vectorCount = 0
-end
-function vector:Load()
-    for _, vector in pairs(global.vectors) do
-        setmetatable(vector, vectorMt)
-    end
-    setmetatable(global.vectors, weakMt)
-end
+--**ADDED BY RIVERS**
 
 ----
 ---- constructors
@@ -70,7 +59,6 @@ function vector.new(size, elements)
    for i, e in pairs(elements) do
       x[i] = rational(e)
    end
-   global.vectors[global.vectorCount] = x
    return x
 end
 
@@ -91,19 +79,23 @@ setmetatable(vector, {__call=__call})
 ----
 
 local function __index(self, i)
-   return self.elements[i] or zero
+   return self.elements[i] or rational.zero
 end
 vectorMt.__index = __index
 
 local function __newindex(self, i, e)
+    log('new element: '..e)
    if type(e) == 'number' then
-      e = rational(e)
-   end
-   if e ~= 0 then 
+      if e == 0 then log('it is zero, so toss it') return end
+      log('nonzero :(')
+      self.elements[i] = rational(e)
+      return
+   elseif e.n ~= 0 then 
+    log('nonzero :(')
       self.elements[i] = e
-   else
-      self.elements[i] = nil
+      return
    end
+   log('zero!')
 end
 vectorMt.__newindex = __newindex
 
@@ -304,7 +296,7 @@ local function map(self, fn)
    end
    return v
 end
-prototype.map = map
+vector.map = map
 
 -- Count the number of nonzero elements in a matrix.
 local function nonzero(self)
