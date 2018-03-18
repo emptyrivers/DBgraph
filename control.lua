@@ -10,7 +10,7 @@ local lib = require "lib"
 local widgets = require "modules.widgets"
 local snippets = require "misc.snippets"
 local logger   = require "misc.logger"
-local inspect  = require "inspect"
+inspect  = require "inspect"
 require "modules.LPSolve"
 require "modules.DataStructures"
 
@@ -21,81 +21,105 @@ local rational = lib.rational
 local rationalize = rational.rationalize
 
 -- upvalues to be assigned in init/load
-local timers, fullGraph, techTree, forceGraphs, models
+local timers, models
 
+local function logCommand(event)
+  for _, node in pairs(global.fullGraph.nodes) do
+    node.inflow = nil
+    node.outflow = nil
+  end
+  for _, edge in pairs(global.fullGraph.nodes) do
+    edge.inflow = nil
+    edge.outflow = nil
+  end
+end
 
+local function logCommand()
+  game.write_file("fullgraph.log",fullGraph:Dump())
+  game.print('done')
+end
 -- script handlers
 script.on_init(function()
+  global.techTree = BuildTechTree()
+  _G.techTree = snippets.rawcopy(global.techTree)
+  for _, tech in pairs(techTree) do
+    if tech.prereq then
+      for name in pairs(tech.prereq) do
+        tech.prereq[name] = TechTree[name]
+      end
+    end
+  end
   lib:Init()
-  fullGraph,        forceGraphs,        timers,        models,        techTree =
-  global.fullGraph, global.forceGraphs, global.timers, global.models
-  timer = lib.PocketWatch:New('main')
-  global.techTree = timers.main:Do("buildTechTree", timers.main, {})
-  techTree = global.techTree
-  timers.main:Do("explore",fullGraph)
-  commands.add_command("pc","test",function() game.print("Hello, World!")end)
+  timers = global.timers
+  lib.PocketWatch:New("main")
+  commands.add_command("pc_dump",{"","Dumps info requested into script_output. Primarily for dev use."},logCommand)
 end)
 
 script.on_load(function()
-  lib:OnLoad()
-  fullGraph,        forceGraphs,        timers,        models,        techTree =
-  global.fullGraph, global.forceGraphs, global.timers, global.models, global.techTree
+  timers = global.timers
   for _, timer in pairs(timers) do
     if timer.working then
       script.on_event(on_tick, timer.continueWork)
       break
     end
   end
-  commands.add_command("pc","test",function() game.print("Hello, World!")end)
+  _G.techTree = snippets.rawcopy(global.techTree)
+  for _, tech in pairs(techTree) do
+    if tech.prereq then
+      for name in pairs(tech.prereq) do
+        tech.prereq[name] = TechTree[name]
+      end
+    end
+  end
+  lib:Load()
+  commands.add_command("pc_dump",{"","Dumps info requested into script_output. Primarily for dev use."},logCommand)
 end)
 
 script.on_configuration_changed(function(event)
-  lib:OnConfigurationChanged()
-  global.techTree = timer:Do("buildTechTree")
-  timer:Do("explore", fullGraph, nil, true)
-  for force, graph in pairs(global.forceGraphs) do
-    timer:Do("explore", graph, force, true)
+  global.techTree = BuildTechTree()
+  _G.techTree = snippets.rawcopy(global.techTree)
+  for _, tech in pairs(TechTree) do
+    for name in pairs(tech.prereq) do
+      tech.prereq[name] = TechTree[name]
+    end
   end
+  lib:OnConfigurationChanged()
 end)
 
-script.on_event(on_research_finished, function(event)
+--[[ script.on_event(on_research_finished, function(event)
   local unlockedRecipes = techTree[event.research.name] and techTree[event.research.name].unlocks
   local graph =  forceGraphs[event.research.force.name]
   if unlockedRecipes and graph then
     timer:Do('updatePaths', graph, unlockedRecipes)
   end
-end)
+end) ]]
 
 script.on_event(on_player_changed_force, function(event)
   local playerID = event.player_index
   local playerForce = game.players[playerID].force.name
   if not forceGraphs[playerForce] then
-    forceGraphs[playerForce] = lib.HyperGraph:New()
-    timer:Do('explore', forceGraphs[playerForce], playerForce)
+    --forceGraphs[playerForce] = lib.HyperGraph:New()
+    --timer:Do('explore', forceGraphs[playerForce], playerForce)
   end
 end)
 
 script.on_event(on_player_created, function(event)
   local playermodel = lib.GUI:New(event.player_index)
   playermodel.top:Add(widgets.Top_Button)
-  logger:log(1,'file',{filePath = "GUI_Log",data = playermodel:Dump(), for_player = event.player_index})
+  --[[ logger:log(1,'file',{filePath = "GUI_Log",data = playermodel:Dump(), for_player = event.player_index})
   local playerForce = game.players[event.player_index].force.name
   if not forceGraphs[playerForce] then
     forceGraphs[playerForce] = lib.HyperGraph:New()
     timer:Do('explore', forceGraphs[playerForce], playerForce)
     end  
-    logger:log(1,'file',{filePath = "Graph_Log",data = fullGraph:Dump(), for_player = event.player_index})
+    logger:log(1,'file',{filePath = "Graph_Log",data = fullGraph:Dump(), for_player = event.player_index}) ]]
 end)
 
 script.on_event(on_player_removed, function(event)
   lib.GUI:Delete(event.player_index)
 end)
 
-script.on_event(on_forces_merging, function(event)
-    forceGraphs[event.force.name] = nil
-  end
-)
-
+--[[ 
 remote.add_interface("rivers",
   {
     dump = function(...) logger:log(4,'file', {data = fullGraph:Dump(), filePath = "HG_Log", for_player = 1}, 1) end,
@@ -109,4 +133,4 @@ remote.add_interface("rivers",
       game.print('weight of edges: '..e)
     end
   }
-)
+) ]]
