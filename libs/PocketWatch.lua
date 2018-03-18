@@ -1,4 +1,4 @@
--- Pocketwatch! Spreads work across multiple ticks. Takes control of on_tick
+-- Pocketwatch! Spreads work across multiple ticks. Takes control of on_tick.
 
 
 local PocketWatch = {}
@@ -7,6 +7,7 @@ local inspect = require 'inspect'
 
 PocketWatch.taskMap = {}
 PocketWatch.timers = {}
+PocketWatch.mt = watchMt
 
 function PocketWatch:Init()
   global.timers = self.timers
@@ -22,14 +23,7 @@ end
 
 function PocketWatch:New(id)
   --creates a new Pocketwatch object.
-  if type(id) ~= 'string' then
-    logger:log(1, "Attempt to create a timer with an invalid id type: "..type(id), "error")
-  end
-  if self.timers[id] then
-    logger:log(2, "Attempt to create a timer that already exists: "..id, "log")
-    return self.timers[id]
-  end
-  local timer = self.setmetatable({
+  self.timers[id] = self.timers[id] or self.setmetatable({
     taskList = {},
     id = id,
     isBlocking = nil,
@@ -40,8 +34,8 @@ function PocketWatch:New(id)
     futureTasks = 0,
     emptyTicks = 0,
     now = 0,
+    type = "PocketWatch",
   })
-  self.timers[id] = timer
   return timer
 end
 
@@ -106,7 +100,7 @@ function PocketWatch:DoTasks()
   self.taskList[now] = nil
 end
 
-function PocketWatch:ContinueWork(event)
+function PocketWatch.ContinueWork(event)
   local futureTasks = 0
   for _, timer in pairs(PocketWatch.timers) do
     timer:DoTasks(game.tick)
