@@ -29,6 +29,27 @@ function snippets.redundancyType(prototype)
   end
 end
 
+function snippets.BuildLocalCopy(graph,forceName)
+  -- this must be a copy, since on_save doesn't exist and we need the saved version to not have the circular references
+  local localGraph = snippets.rawcopy(graph)
+  repairMetatables(localGraph)
+  for pointid, connectionid in pairs{edges = "nodes",nodes = "edges"} do
+    for _, point in pairs(localGraph[pointid]) do
+      for _, flow in pairs{"inflow","outflow"} do
+        for name in pairs(point[flow]) do
+          point[flow][name]  = localGraph[connectionid][name]
+        end
+      end
+    end
+  end
+  if forceName then
+    _G.forceGraphs[forceName] = localGraph
+  else
+    _G.fullGraph = localGraph
+  end
+  return localGraph
+end
+
 function snippets.rawcopy(o, seen)
   seen = seen or {}
   if o == nil then return nil end
