@@ -214,7 +214,7 @@ widgets.search_button = {
                 i = i + 1
             end
             game.print("received request for: "..inspect(t))
-            global.timers.main:Do("BeginProblem", global.timers.main, global.fullGraph,t,self.result_list)
+            global.timers.main:Do("BeginProblem", global.timers.main, fullGraph, t, self.result_list)
         end,
     },
     attributes = {
