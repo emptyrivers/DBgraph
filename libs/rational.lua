@@ -19,13 +19,15 @@
 local rational = {}
 local rationalMt = {}
 local weakMt = {__mode = "kv"}
-
+rational.mt = rationalMt
 local floor = math.floor
 
 local function gcd(a,b) --native int only!
-	if b ~= 0 then
+  if a == math.huge or b == math.huge then
+    return 1
+  elseif b ~= 0 then
 		return gcd(b, a % b)
-	else
+  else
 		return math.abs(a)
 	end
 end
@@ -39,19 +41,30 @@ local function lcm(a,b) --native int only!
 end
 
 function rational:Init()
-  global.rationals = setmetatable({}, weakMt)
-  global.rationalCount = 0
+  rational.zero = rational(0)
+  rational.one = rational(1)
+  global.rationalnan = setmetatable({
+    n = 0,
+    d = 0,
+    type = 'rational',
+    nan = true,
+  }, rationalMt)
+  global.rationalinf = setmetatable({
+    n = 1,
+    d = 0,
+    type = 'rational',
+  }, rationalMt)
+  rational.nan = global.rationalnan
+  rational.inf = global.rationalinf
 end
 
 function rational:Load()
-  setmetatable(global.rationals,weakMt)
-  for _, r in pairs(global.rationals) do
-    setmetatable(r, rationalMt)
-  end
+  rational.nan = setmetatable(global.rationalnan, rationalMt)
+  rational.inf = setmetatable(global.rationalinf, rationalMt)
 end
 
 
-function rational.new(a,b)
+function rational.new(a,b,isNaN)
   local n,d = floor(a), floor(b or 1)
   local div = gcd(n,d)
   if div ~= 1 then
@@ -59,15 +72,16 @@ function rational.new(a,b)
   end
   if d < 0 then
     n,d = -n, -d
-  elseif d == 0 then
   end
   local r = setmetatable({
     n = n,
     d = d,
     type = "rational",
   }, rationalMt)
-  global.rationals[global.rationalCount] = r
-  global.rationalCount = global.rationalCount + 1
+  if not getmetatable(r) then error("wtf",2) end
+  if d == 0 and n == 0 then
+    r.nan = true
+  end
   return r
 end
 
@@ -98,7 +112,15 @@ function rational.abs(r)
   end
 end
 function rational.copy(r)
-  return rational(r.n,r.d)
+  return rational(r.n,r.d,r.nan)
+end
+
+function rational.min(a,b)
+  return a < b and a or b
+end
+
+function rational.max(a,b)
+  return a > b and a or b
 end
 setmetatable(rational,{
   __call = function(self,n,d)
@@ -109,79 +131,89 @@ setmetatable(rational,{
 
 function rationalMt.__add(a,b) --a+b
   if type(a) == 'number' then -- b must be rational
-    return rational(a * b.d + b.n,b.d)
+    return rational(a * b.d + b.n,b.d,b.nan)
   elseif type(b) == 'number' then -- a must be rational
-    return rational(b * a.d + a.n,a.d)
+    return rational(b * a.d + a.n,a.d,a.nan)
   elseif b.type == "rational" and a.type == "rational" then
-    return rational(a.d*b.n + a.n*b.d,a.d*b.d)
+    return rational(a.d*b.n + a.n*b.d,a.d*b.d,a.nan or b.nan)
   end
 end
 function rationalMt.__sub(a,b) --a-b
   -- n0/d0 - n1/d1 == (n0d1 - n1d0)/d0d1
   if type(a) == 'number' then -- b must be rational
-    return rational(a * b.d - b.n,b.d)
+    return rational(a * b.d - b.n,b.d,b.nan)
   elseif type(b) == 'number' then -- a must be rational
-    return rational(b * a.d - a.n,a.d)
+    return rational(b * a.d - a.n,a.d,a.nan)
   elseif b.type == a.type then --both must be rational
-    return rational(a.n*b.d - a.d*b.n ,a.d*b.d)
+    return rational(a.n*b.d - a.d*b.n ,a.d*b.d,a.nan or b.nan)
   end
 end
 function rationalMt.__mul(a,b) --a*b
   if not a then error("?",3) end
   if type(a) == "number" then -- b must be rational
-    return rational(a*b.n,b.d)
+    return rational(a*b.n,b.d,b.nan)
   elseif type(b) == 'number' then -- a must be rational
-    return rational(a.n*b,a.d)
+    return rational(a.n*b,a.d, a.nan)
   elseif a.type == b.type then -- a and b are both rational
-    return rational(a.n*b.n,a.d*b.d)
+    return rational(a.n*b.n,a.d*b.d, a.nan or b.nan)
   else -- b must not be rational, since left arg's metamethod gets called
     return b * a
   end
 end
 function rationalMt.__div(a,b) --a/b
   if type(a) == "number" then -- b must be rational, a/b = a/(n/d) = a*d/n
-    return rational(a*b.d,b.n)
+    return rational(a*b.d,b.n, b.nan)
   elseif type(b) == 'number' then -- a must be rational
-    return rational(a.n,a.d*b)
+    return rational(a.n,a.d*b, a.nan)
   elseif a.type == b.type then -- a and b are both rational
-    return rational(a.n*b.d,a.d*b.n)
+    return rational(a.n*b.d,a.d*b.n, a.nan or b.nan)
   else -- b must not be rational, since left arg's metamethod gets called
     error('cannot divide a rational by a '..b.type)
   end
 end
 function rationalMt.__unm(a)  --(-a)
-  return rational(-a.n,a.d)
+  return rational(-a.n,a.d,a.nan)
 end
 function rationalMt.__tostring(a) --tostring(a)
-  if a.d == 1 then return tostring(a.n) end
+  if a.nan then
+    return 'nan'
+  elseif a.d == 1 then 
+    return tostring(a.n) 
+  elseif a.d == 0 then --inf or nan
+    if a.n > 0 then
+      return "inf"
+    elseif a.n < 0 then
+      return "-inf"
+    end
+  end
   return ("%s/%s"):format(a.n,a.d)
 end
 function rationalMt.__concat(a,b) --a..b
   return tostring(a)..tostring(b)
 end
 function rationalMt.__eq(a,b) --a==b
-  return a.n == b.n and a.d == b.d
+  return a.n == b.n and a.d == b.d and not (a.nan or b.nan)
 end
 function rationalMt.__lt(a,b) --a<b
-  if type(b) == "number" then
-    return a.n < b*a.d
-  elseif type(a) == "number" then
-    return a * b.d < b.n
-  elseif b.type == "rational" then
-    return a.n*b.d < a.d*b.n
+  if type(a) == "number" then
+    return a * b.d < b.n and not b.nan
+  elseif type(b) == "number" then 
+    return a.n < b*a.d and not a.nan
+  elseif a.type == b.type then
+    return a.n*b.d < a.d*b.n and not (a.nan or b.nan)
   else
     error("comparison is not supported for this type",2)
   end
 end
 function rationalMt.__le(a,b) --a<=b
-  if type(b) == "number" then
-    return a.n <= b*a.d
-  elseif b.type == "rational" then
-    return a.n*b.d <= a.d*b.n
+  if type(a) == "number" then
+    return a * b.d <= b.n and not b.nan
+  elseif type(b) == "number" then 
+    return a.n <= b*a.d and not a.nan
+  elseif a.type == b.type then
+    return a.n*b.d <= a.d*b.n and not (a.nan or b.nan)
   else
     error("comparison is not supported for this type",2)
   end
 end
-rational.zero = setmetatable({n=0,d=1,type = 'rational'},rationalMt)
-rational.one = setmetatable({n=1,d=1,type = 'rational'},rationalMt)
 return rational
