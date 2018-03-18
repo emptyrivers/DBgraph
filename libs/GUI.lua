@@ -25,7 +25,7 @@ local namePoolMt = {
     return 1
   end
 }
-
+GUI.mt = elementMt
 --  future upvalues
 local models, namePool
 
@@ -38,10 +38,8 @@ function GUI:Init()
 end
 
 function GUI:Load()
-  for _,model in pairs(global.models) do
-    self:setmetatable(model)
-  end
   models, namePool = global.models, global.namePool
+  setmetatable(namePool,namePoolMt)
   return global.models, global.namePool
 end
 
@@ -59,6 +57,7 @@ function GUI:setmetatable(model)
   return setmetatable(model, elementMt)
 end
 
+
 function GUI:New(playerID)
   local player = game.players[playerID]
   if not player then
@@ -69,6 +68,7 @@ function GUI:New(playerID)
     __flatmap = {},
     gui = model,
     indestructible = true,
+    type = "GUI",
   }
   for id, method in pairs{top = 'get_button_flow',center = false,left = 'get_frame_flow'} do
     model[id] = {
@@ -80,15 +80,14 @@ function GUI:New(playerID)
     }
     model.__flatmap[id] = model[id]
   end
-  global.namePool[player.index] = {}
-  global.models[player.index] = model
+  namePool[player.index] = {}
+  models[player.index] = model
   return self:setmetatable(model)
 end
 
-function GUI:Delete(playerID)
-  local index = game.players[playerID].index -- there are more valid playerIDs then necessary, so get the uint version
-  global.namePool[index] = nil
-  global.models[index] = nil
+function GUI:Delete(index) 
+  namePool[index] = nil
+  models[index] = nil
 end
 
 -- helper function for Add
@@ -98,7 +97,7 @@ function AcquireName(name, playerID)
   local pool = namePool[game.players[playerID].index]
   local id = pool[name]
   pool[name] = pool[name] + 1
-  return ("GUI_%s:%s:%s"):format(name,playerID,id),id  
+  return ("PC_%s:%s:%s"):format(name,playerID,id),id  
 end
   
 function GUI:Add(widget)
@@ -108,6 +107,7 @@ function GUI:Add(widget)
     __element = self.add(widget.prototype),
     gui = self.gui, 
     parent = self,
+    type = "GUI",
   }
   widget.prototype.name = nil
   if widget.methods then
