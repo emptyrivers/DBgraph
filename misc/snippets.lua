@@ -78,7 +78,7 @@ function snippets.report(message, ...)
         table.insert(t, inspect(v))
       end
     else
-      table.insert(tostring(v) or "nil")
+      table.insert(t,tostring(v) or "nil")
     end
   end
   log(table.concat(t,"\n ------------------------------------------------")) 
