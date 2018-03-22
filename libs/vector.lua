@@ -84,18 +84,19 @@ end
 vectorMt.__index = __index
 
 local function __newindex(self, i, e)
-    log('new element: '..e)
    if type(e) == 'number' then
-      if e == 0 then log('it is zero, so toss it') return end
-      log('nonzero :(')
+    if e == 0 then 
+        self[i] = nil
+    else
       self.elements[i] = rational(e)
-      return
-   elseif e.n ~= 0 then 
-    log('nonzero :(')
+    end
+   elseif e.type == "rational" then
+    if e.n ~= 0 then 
       self.elements[i] = e
-      return
+    else
+      self.elements[i] = nil
+    end  
    end
-   log('zero!')
 end
 vectorMt.__newindex = __newindex
 
