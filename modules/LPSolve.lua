@@ -2,153 +2,130 @@
 -- customized implementation of Revised Simplex method
 
 local lib = require "lib"
-local taskMap, matrix, vector = lib.PocketWatch.taskMap, lib.matrix, lib.vector
+local taskMap, matrix, vector, rational = lib.PocketWatch.taskMap, lib.matrix, lib.vector, lib.rational
 
-require "util"
+local util  =  require "util"
 local logger = require "misc.logger"
 local snippets = require "misc.snippets"
 local inspect = require 'inspect'
-local rational = lib.rational
 
-
-function AddMapping(state, toMap,type)
+local function AddMapping(state, toMap,type)
   if state.__forwardMap[type][toMap] then return end
   table.insert(state.__inverseMap[type], toMap)
   state.__forwardMap[type][toMap] = #state.__inverseMap[type]
 end
 
-function taskMap.BeginProblem(timer,graph,target,guiElement) --TODO: cleanup
-  -- first, create problem state which will persist until the problem is solved
+function taskMap.BeginProblem(timer,graphName,target,guiElement) 
+
   local state = { --state is for things which won't be edited during the current stage of the problem
-    graph = graph,
     element = guiElement,
-    target = target,
-    recipes = {},
-    source = {},
-    __forwardMap = {item = {}, recipe = {}, source = {}, compressed ={}}, --maps strings to unique id for this problem
-    __inverseMap = {item = {}, recipe = {}, source = {}, compressed ={}}, --get strings back from unique id
+    __forwardMap = {item = {}, recipe = {}, source = {}, compressed ={}},
+    __inverseMap = {item = {}, recipe = {}, source = {}, compressed ={}}, 
   }
-  local queue = snippets.NewQueue()
-  local b = {}
+
+  local queue, b, graph = snippets.NewQueue(), {}, _G[graphName]
   for item, constraint in pairs(target) do
     if constraint > 0 then
-    local node = graph.nodes[item]
-    queue:push(node)
+      queue:push(item)
     end
     AddMapping(state,item,'item')
     b[state.__forwardMap.item[item]] = constraint
   end
-  state.b = vector(b)
-  return timer:Do("GetProblemConstants",timer,state,queue,{node = {}, edge = {}}, {}, {}, {})
+  state.target = b
+  local visited, w, u_s, u_it = {node = {}, edge = {}}, {}, {}, {}
+  return timer:Do("GetProblemConstants",timer,state,graphName,queue,visited, w, u_s, u_it)
 end
 
-function taskMap.GetProblemConstants(timer,state,queue,visited, w, u_s, u_it) -- try to construct u, w, u_s, u_it now
-  local itemtoint = state.__forwardMap.item
-  local recipetoint = state.__forwardMap.recipe
-  local sourcetoint = state.__forwardMap.source
+function taskMap.GetProblemConstants(timer, state, graphName, queue, visited, w, u_s, u_it) 
+  local graph, itemtoint, recipetoint, sourcetoint = _G[graphName], state.__forwardMap.item, state.__forwardMap.recipe,state.__forwardMap.source
   for i = 1,40 do
-    local node = queue:pop()
-    if not node then 
-      return timer:Do("BuildDataStructs",timer,state, w, u_s, u_it) 
-    end
+    local nodeid = queue:pop()
+    if not nodeid then return timer:Do("BuildDataStructs",timer,state, w, u_s, u_it) end
+    local node = graph.nodes[nodeid]
     visited.node[node.id] = true
     if node.type == "SOURCE" then
       w[sourcetoint[node.id]] = 1
     elseif table_size(node.inflow) > 0 then
       for edgeid, edge in pairs(node.inflow) do
-        if edge.valid and not visited.edge[edgeid] --[[ and edge.enabled ]] then -- this is a column of u
-          local it, s = {}, {}
-          visited.edge[edgeid] = true
+        if edge.valid and not visited.edge[edgeid] then 
           AddMapping(state,edgeid,'recipe')
+          visited.edge[edgeid] = true
+          local it, s = {}, {}
           for product, amount in pairs(edge.products) do
-            -- products cannot be sources. all of these go to it
-            -- also don't queue these nodes up
-            if not itemtoint[product] then
-              AddMapping(state,product,'item')
-            end
-            log('adding '..node.id..' to recipes at amount='..(amount))
+            if not itemtoint[product] then AddMapping(state,product,'item') end
             it[itemtoint[product]] = amount
           end
           for ingredient, amount in pairs(edge.ingredients) do
             local node = edge.inflow[ingredient]
-            if not visited.node[ingredient] then queue:push(node) end
+            if not visited.node[ingredient] then queue:push(node.id) end
             if node.type == "SOURCE" then
-              AddMapping(state,ingredient,'source')
+              if not sourcetoint[ingredient] then AddMapping(state,ingredient,'source') end
               s[sourcetoint[ingredient]] = amount 
-              log('adding '..node.id..' to sources at amount='..amount)
             else
-              AddMapping(state,ingredient,'item')
-              log('adding '..node.id..' to recipes at amount='..(-amount))
+              if not itemtoint[ingredient] then AddMapping(state,ingredient,'item') end
               it[itemtoint[ingredient]] = -amount
             end
           end
-          -- now it and s are complete: add columns to protomatrix
           u_s[recipetoint[edgeid]] = s
           u_it[recipetoint[edgeid]] = it
         end
       end
     else 
-      -- cannot be produced, not a source. Add a fake node with infinite cost
       local fakeSource = "@PC_SOURCE@"..node.id
       AddMapping(state,fakeSource,"source")
       local fakeRecipe = "@PC_SOURCE@"..node.id
       AddMapping(state,fakeRecipe,"recipe")
-      w[sourcetoint[fakeSource]] = lib.rational.inf
+      w[sourcetoint[fakeSource]] = rational.inf
       u_it[recipetoint[fakeRecipe]] = {[itemtoint[node.id]]=1}
       u_s[recipetoint[fakeRecipe]] = {[sourcetoint]=1}
     end
   end
-  return timer:Do("GetProblemConstants", timer, state, queue, visited, w, u_s, u_it)
+  return timer:Do("GetProblemConstants",timer, state, graphName, queue, visited, w, u_s, u_it)
 end
 
-function taskMap.BuildDataStructs(timer,state, w, u_s, u_it) 
-  local q = #state.__inverseMap.item
-  local p = #state.__inverseMap.source
-  local n = #state.__inverseMap.recipe
-  local recipetoint = state.__forwardMap.recipe
---[[   for i = 1,q do
-    local id = "@PC_SLACK@"..i
-    AddMapping(state,id,'recipe')
-    u_it[ recipetoint[id] ] = {[i] = -1}
-  end ]]
-  local A = matrix(u_it,n,q)
-  local A_t = A:t()
-  local b = state.b
+function taskMap.BuildDataStructs(timer,state, w, u_s, u_it)
+  local q, p, n = #state.__inverseMap.item, #state.__inverseMap.source, #state.__inverseMap.recipe
+  local A_c = matrix(u_it,n,q)
+  local A_r = A_c:t()
+  local b = vector(state.target)
   b.size = q
-  state.c =  matrix(u_s, n + q, p) * vector(w)
-  state.flipped = {}
---[[   for i=1,#b do
-    if b[i] < 0 then -- thus, b>=0, but the slack coeff on that row might be negative if b[i] was already positive
-      A_t[i] = -1 * A_t[i]
-      b[i] = -b[i]
-      state.flipped[i] = true
+  local c =  matrix(u_s, n, p) * vector(w)
+  state.solutiontoitems = A_r:copy()
+  local queue, Y, deleted--[[ , flipped ]] = snippets.NewQueue(), {}, {row = {}, column = {},}--[[ , {} ]]
+  for r, row in A_r:vects() do
+    if not state.target[r] then
+      queue:push(r)
     end
-  end ]]
-  -- prepare for simplification
-  local queue = snippets.NewQueue()
-  for r in A_t:vects() do
-    queue:push(r)
+    --[[ if b[r].n < 0 then
+      A_r[r] = -row
+      for i, e in row:elts() do
+        e = -e
+        row[i], A_c[i][r] = e, e
+      end
+      b[r] = -b[r]
+      flipped[r] = true
+    end ]]
   end
-
-  return timer:Do("Simplify", timer, state, queue, {row = {}, column = {},}, {}, A_t, b, A)
+  --state.flipped = flipped
+  for i = 1, A_c.rows do
+    table.insert(Y,vector.new(A_c.rows,{[i]=1}))
+  end
+  return timer:Do("Simplify", timer, state, queue, deleted, A_r, A_c, b, c, Y)
 end
 
-
-local function simpleTransfer(v, deleted) --analyzes a row to see if it is a simple row (1 inflow, 1 outflow)
-  -- if yes, returns the column indices
-  -- else, returns nil
+local function simpleTransfer(v, deleted) 
   local pos, neg
   for i, e in v:elts() do
     if not deleted[i] then
-      if e > 0 then --e ~= 0, because sparse
-        if pos ~= nil then 
+      if e > 0 then 
+        if pos then 
           pos = false
-        else
+        elseif pos == nil then
           pos = i
         end
       else
         if neg then
-          return
+          return pos, false
         else
           neg = i
         end
@@ -158,17 +135,15 @@ local function simpleTransfer(v, deleted) --analyzes a row to see if it is a sim
   return pos, neg
 end
 
-local function simpleFeed(v, known, A)
-  -- check to see if v feeds only the known column
-  -- if this function has been run, we already know that only v feeds the known column in a particular row
-  -- we do this because it might be the case that v feeds known > 1 thing
+local function simpleFeed(v, known, A, deleted, target)
   local r = rational.zero
   for i, e in v:elts() do
-    if e > 0 then -- feeding recipe feeds this item
+    if target[i] then return end
+    if not deleted.row[i] and e > 0 then 
       for j, f in A[i]:elts() do 
-        if f < 0 then -- this recipe consumes what v feeds
+        if f < 0 then 
           if j ~= known then return end
-          r = rational.max(rational(-f, e), r) 
+          r = rational.max(-f/e, r) 
         end
       end
     end
@@ -176,330 +151,229 @@ local function simpleFeed(v, known, A)
   return r
 end
 
-
-
-function taskMap.Simplify(timer, state, queue, deleted, stack, A_r, A_c, b, c) 
-  -- A_r is here only for reference, it doesn't get altered directly, and will be discarded after this stage
-  -- search for trivial rows
-  -- if row is trivial, check to see if feeding column is trivial
-  -- if yes, then join columns. Trivial row will vanish to either a surplus or exact row, either one can't be trivial
-  -- queue all nonzero and nondeleted rows of the deleted column
-  do
+function taskMap.Simplify(timer, state, queue, deleted, A_r, A_c, b, c, Y)
+  for i = 1, 40 do
     local r = queue:pop()
-    if not row then
-      return timer:Do("ReduceProblem", timer, state, stack, A_c, b, c, basis)
+    if not r then
+      return timer:Do("ReduceProblem", timer, state, deleted, A_r, b, c, Y)
     end
     row = A_r[r]
-    local pos, neg = simpleTransfer(row,deleted.column)
-    if pos then
-      -- row is simple. Now, ensure that the negative column doesn't feed any other column
-      local column = A[neg]
-      local feed = simpleFeed(column, pos, A_r)
-      -- we know that we can join column neg with column pos and cause at least two indices to become zero
-      A_c[pos], A_c[neg] = A_c[pos] + feed * A_c[neg], nil
-      c[pos], c.elements[neg] = c[pos] + feed * c[neg], false
-      b.elements[r] = false
-      deleted.column[neg], deleted.row[r]  = true
-      for i in column:elts() do
-        if not deleted.row[i] and not queue.queued[i] then
-          queue:push(i)
+    local prod, cons = simpleTransfer(row,deleted.column)
+    if prod and cons then
+      local column = A_c[prod]
+      local feed = simpleFeed(column, cons, A_r, deleted, state.target)
+      if feed then
+        A_c[cons] = A_c[cons] + feed * A_c[prod]
+        Y[cons]= Y[cons] + feed * Y[prod]
+        c[cons]= c[cons] + feed * c[prod]
+        deleted.row[r], deleted.column[prod] = true, true
+        for i,e in column:elts() do
+          A_r[i][prod] = 0
+          A_r[i][cons] = A_c[cons][i]
+          if not deleted.row[i] and not state.target[i] then
+            queue:push(i)
+          end
         end
       end
-      -- need to push onto queue any affected rows 
-      -- record the change that was made so that it can be unwound later
-      -- newRecipe = feed * feedRecipe + consumeRecipe
-      -- this is equivalent to table.removing from A_c the feeding column, which is at neg column
-      -- this must be fifo, since otherwise it'll make no sense when we unwind
-      table.insert(stack,{ 
-        feed = neg,
-        coeff = feed,
-        consume = pos,
-        id = #state.__inverseMap.compressed
-      })
     elseif pos == false then -- that row is deleted already
       deleted.row[r] = true
-      b.elements[r] = false
-      queue.queued[r] = nil
     end
   end
-  return timer:Do('Simplify', timer, state, queue, A_r, A_c, b, c)
+  return timer:Do('Simplify', timer, state, queue, deleted, A_r, A_c, b, c, Y)
 end
 
-local function IsProblemTrivial(target, A, b, c) --A is column major here
+local function IsProblemTrivial(target, A) 
   local targetSeen = {}
   for i, recipe in A:vects() do
     local contributesToTarget
     for j, val in recipe:elts() do
       if val > 0 and target[j] then
-        if targetSeen[j] then return end -- target item has multiple recipes which produce it
+        if targetSeen[j] then return end 
         targetSeen[j] = i
         contributesToTarget = true
       end
     end
-    if not contributesToTarget then return end -- recipe does not produce target item
+    if not contributesToTarget then return end 
   end
   return targetSeen
 end
 
-function taskMap.ReduceProblem(timer, state, toRemove, A, b, c)
-  -- remove all the rows an columns in toRemove from A
-  for r in pairs(toRemove.row) do
-    A.vectors[r] = nil
-  end
-  local A_short = matrix.new(A.rows - table_size(toRemove.row), A.columns)
-  local i = 1
-  for _, row in A:vects() do
-    A_short.vectors[i] = row
-    i = i + 1
-  end
-  -- now remove all columns
-  A_short = A_short:t()
-  for c in pairs(toRemove.column) do
-    A_short.vectors[c] = nil
-  end
-  local A_small = matrix.new(A_short.rows - table_size(toRemove.column), A_short.columns)
-  i = 1
-  for _, row in A_short:vects() do
-    A_small.vectors[i] = row
-    i = i + 1
-  end
-  local b_small = vector.new(#b - table_size(toRemove.row))
-  i = 1
-  for j = 1, #b do
-    if b[j] ~= false then
-      b_small[i] = b[j]
-      i = i + 1
+function taskMap.ReduceProblem(timer, state, toRemove, A, b, c, Y)
+  local columns, rows = toRemove.column, toRemove.row
+  local A_small = matrix.new(A.rows - table_size(rows), A.columns - table_size(columns))
+  local k, l = 0,0
+  for i = 1, A.rows do
+    if not rows[i] then
+      k = k + 1
+      l = 0
+      for j = 1, A.columns do
+        if not columns[j] then
+          l = l + 1
+          A_small[k][l] = A[i][j]
+        end
+      end
     end
   end
-  local c_small = vector.new(#c - table_size(toRemove.column))
-  i = 1
-  for j = 1,#c do
-    if c[j] ~= false then
-      c_cmall[i] = c[j]
-      i = i +_1
+  local b_small,j = vector.new(#b - table_size(rows)),0
+  for i=1,#b do
+    if not rows[i] then
+      j = j + 1
+      b_small[j] = b[i]
     end
   end
-  state.c = c_small
-  local solution = IsProblemTrivial(state.target,A_small, b_small, c_small) 
+  local c_small,j = vector.new(#c-table_size(columns)), 0
+  for i=1,#c do
+    if not columns[i] then
+      j = j + 1
+      c_small[j] = c[i]
+    end
+  end
+  local Y_small,j = matrix.new(#c_small, #c), 0
+  for i=1,#c do
+    if not columns[i] then
+      j = j + 1
+      Y_small[j] = Y[i]
+    end
+  end 
+  local solution = IsProblemTrivial(state.target, A_small) 
   if solution then
     local x = vector.new(A_small.columns)
     for item, recipe in pairs(solution) do
-      --something
+      x[recipe] = rational.max(x[recipe], 1/A_small[recipe][item])
     end
-    return timer:Do("PostSolve", timer, state, A_small, b_small, c_small, x)
+    log(tostring(Y_small))
+    return timer:Do("PostSolve", state, x, Y_small, state.solutiontoitems)
   end
-  return timer:Do("PreSolve1", timer, state, A_small, b_small)
+  state.decompressor= Y_small
+  return timer:Do("Phase1", timer, state, A_small:t(), b_small, c_small)
 end
 
-
-function taskMap.PreSolve1(timer,state, A, b) 
-  -- set slack vars (actually surplus for our purposes)
-
-
-  -- obtain initial bfs for phase 1
-  local recipetoint, n, m = state.__forwardMap.recipe, A:size()
-  local x, c, c_b, A_b, B, N = vector.new(n), vector.new(n), vector.new(m),  matrix.new(m,m), {}, {}
-  local artCounter, isBasis = 0, {}
-  for i=1, m do
-    local id
-    if --[[ b[i] ~= 0 and ((b[i] > 0) ~= (A[i + m][i] > 0)) ]]  true then
-      phase = 1
-      local newVar = '@PC_ARTIFICIAL@'..artCounter
-      AddMapping(state,newVar,'recipe')
-      id = recipetoint[newVar]
-      artCounter = artCounter + 1
-      local v = vector.new(m,{[i] = 1})
-      x.size, c.size, A.rows = #x + 1, #c + 1, A.rows + 1
-      A.vectors[id] = v
-      A_b.vectors[i] = v
-      c[id] = 1 
-      c_b[i] = 1
-    else
-      id = recipetoint["@PC_SLACK@"..i]
-      A_b.vectors[i] = A.vectors[id]
-    end 
-    log('initial basis #'..i..' = '..id)
-    isBasis[id] = true
-    B[i] = id
-    x[id] = b[i]
+function taskMap.Phase1(timer,state, A, b, c) 
+  local n, m = A:size()
+  local x_b, newc, c_b, A_b, A_b_inv, B, N, surplus, artificial, isBasis = vector.new(m), vector.new(n), vector.new(m),  matrix.new(m), matrix.new(m), {}, {}, {}, {}, {}
+  local j = n
+  for i = 1, m do
+    j = j + 1
+    A[j] = vector.new(m,{[i]=-1})
+    surplus[j] = true
+    if b[i] ~= rational.zero then
+      j = j + 1
+      A[j] = vector.new(m, {[i]=1})
+      artificial[j] = true
+      newc[j] = rational.one
+      c_b[i] = rational.one
+    end
+    B[i] = j
+    A_b[i] = A[j]
+    A_b_inv[i] = A[j]:copy()
+    isBasis[j] = true
+    x_b[i] = b[i]
   end
-  local id = 1
+  A.rows = j
+  newc.size = j
   for i = 1, A.rows do
     if not isBasis[i] then
-      N[i] = id
-      log('nonbasis #'..id..' = '..i)
-      id = id + 1
+      table.insert(N,i)
     end
   end
-
-  -- if no artificial vars necessary, then bfs is trivial and go directly to phase 2
-  if phase == 2 then
-    c = state.c
+  state.phase = 1
+  if j == m + n then
+    state.phase = 2
+    newc = c
     for i, j in pairs(B) do
       c_b[i] = c[j]
     end
-  end
-  log('objective function is c='..tostring(c))
-  log('constraint vector is b='..tostring(b))
-  log('constraint func is A:\n'..tostring(A:t()))
-  log('initial bfs is x='..tostring(x))
-  log('A*x='..tostring(A:t()*x))
-  log('c_b='..tostring(c_b))
-  log('A_b=\n'..tostring(A_b))
-  if artCounter == 0 then
-    state.phase = 2
   else
-    state.phase = 1
+    state.objective = c
   end
-  log('phase = '..state.phase)
-  state.iter = 1
-  return timer:Do("LPSolve",timer,state, c, x, A, b, c_b, A_b, B, N, matrix.id(m))
+  state.iter, state.surplus = 1, surplus
+  snippets.report("Prepared for LP algorithm:", x_b, c_b, A_b, A_b_inv, B, N, A, newc, artificial)
+  return timer:Do("FindEnteringVar", timer, state, x_b, c_b, A_b, A_b_inv, B, N, A, newc, artificial)
 end
 
-
-function taskMap.PreSolve2(timer,state, c, x, A, b, c_b, A_b, B, N, A_b_inv)
-  local inttorecipe = state.__inverseMap.recipe
-  for i = #x, 1, -1 do
-    local id = inttorecipe[i]
-    if id:find("^%@PC_ARTIFICIAL%@") then
-      x.size = #x - 1
-      A.rows, A.vectors[i] = A.rows - 1, nil
-      for j,v in ipairs(N) do
-        if v == i then
-          table.remove(N,j)
-          break
-        end
-      end
-    else
-      break
-    end
-  end
-
-  c = state.c
-  for i, j in pairs(B) do
-    c_b[i] = c[j]
-  end
+function taskMap.Phase2(timer, state, x_b, c_b, A_b, A_b_inv, B, N, A, c, Z)
   state.phase = 2
   state.iter = 1
-
-  -- A_b is almost certainly not the identity matrix here.
-  log('Phase 2: c='..tostring(c))
-  return timer:Do("LPSolve",timer,state, c, x, A, b, c_b, A_b, B, N, A_b_inv)
+  c, state.objective = state.objective
+  for i,j in pairs(B) do
+    c_b[i] = c[j]
+  end
+  return timer:Do("FindEnteringVar",timer,state, x_b, c_b, A_b, A_b_inv, B, N, A, c, Z)
 end
 
-
-
-
-function taskMap.LPSolve(timer,state, c, x, A, b, c_b, A_b, B, N, A_b_inv)
-  log('iteration #:'..state.iter)
-  log('best solution so far is: x='..tostring(x))
-  log('best score so far is c*x='..tostring(x*c))
-  log('A_b^-1=\n'..tostring(A_b_inv))
-  log('c_b='..c_b)
-  -- solve A_b * y = c_b
-  -- A_b_inv * c_b
+function taskMap.FindEnteringVar(timer, state, x_b, c_b, A_b, A_b_inv, B, N, A, c, Z)
   local y = A_b_inv * c_b
-
-
-
-  log('new intermediate vector y='..tostring(y))
-  -- find entering var
   local k, A_k
-  for j,j_n in pairs(N) do
-    if c[j_n] - A[j_n] * y < 0 then
-      k = j 
-      A_k = A[j_n]
+  for i, j in pairs(N) do
+    local A_j = A[j]
+    if c[j] - A_j * y < 0 then
+      k, A_k = i, A_j
       break
     end
   end
-  
-  -- check for optimality
   if not k then
-    log'solution is optimal'
-    log('score is c*x ='..c*x)
-    log('\n'..tostring(A:t()))
-    log(tostring(b))
-    log('A*x='..tostring(A:t()*x))
     if state.phase == 1 then
-      if x * c <= 0 then
-        return timer:Do("PreSolve2",timer,state, c, x, A, b, c_b, A_b, B, N, A_b_inv)
+      if (x_b * c_b).n == 0 then
+        snippets.report("feasible solution found: onto phase 2", x_b, B, Z)
+        return timer:Do("Phase2", timer, state, x_b, c_b, A_b, A_b_inv, B, N, A, c, Z)
       else
-        return state.element:Update("infeasible",state)
+        return state.element:Update("infeasible")
       end
     else
-      return state.element:Update("finished", x, state.__inverseMap)
+      local x, decompressor, solutiontoitems = vector.new(state.decompressor.rows), state.decompressor, state.solutiontoitems
+      for i,j in pairs(B) do
+        x[j] = x_b[i]
+      end
+      snippets.report("Solution found:", x, decompressor, solutiontoitems)
+      return timer:Do("PostSolve", state, x, decompressor, solutiontoitems)
     end
   end
-  log('found a new entering var k='..k..' which corresponds to x_'..N[k])
+  snippets.report("Entering var found: ", k, A_k)
+  return timer:Do("FindLeavingVar", timer, state, k, A_k, x_b, c_b, A_b, A_b_inv, B, N, A, c, Z)
+end
 
-  -- solve d*A_b = A_k
-
+function taskMap.FindLeavingVar(timer, state, k, A_k, x_b, c_b, A_b, A_b_inv, B, N, A, c, Z)
   local d = A_k * A_b_inv
-  log('new intermediate vector d='..tostring(d))
-
-  local u,t,r = true, math.huge
+  local u, t, r = true, rational.inf
   for i,e in d:elts() do
-    if e > 0  then
+    if e > 0 then
       u = false
-      local ratio = x[B[i]]/e
+      local ratio = x_b[i]/e
       if ratio < t then
-        t = ratio
-        r = i
+        t, r = ratio, i
       end
     end
   end
-
-  -- check for unboundedness
-  if u then 
-    return state.element:Update("unbounded",state)
+  if u then
+    return state.element:Update("unbounded")
   end
-  log('found a new leaving var r='..r..' which corresponds to x_'..B[r])
-  log('the total increase to entering var was t='..t)
-
-  -- update to prepare for next iteration
-  -- A_b gets updated by replacing A_b[r] with A_k (thinking in columns here)
-  -- so the update matrix is u*v:t(), where u = A_k - A_b[r] and v = { [r] = 1}
-  -- so since our crap is all transposed, we want v*u:t()
-  local v,u, vu = vector.new(#b,{[r]=1}), A_k - A_b[r], matrix.new(#b)
-  A_b[r] = A_k
-  log('new basis matrix:'..A_b)
-  log('updating inverse using rank1 update')
-  vu[r] = u
-  local abv = A_b_inv * v
-  log('u='..u)
-  log('v='..v)
-  log('vu='..vu)
-  log('A^-1*v='..abv)
-  local uabv = u * abv
-  log('u*A^-1*v='..uabv)
-  log('inverse multiplier ='..(1+uabv))
-  local mul = 1/(1+uabv)
-  log('multiplier='.. mul)
-  local protoinv = A_b_inv * vu * A_b_inv
-  log('scaled inverse ='..(protoinv))
-  A_b_inv = A_b_inv - (mul * protoinv)
-  c_b[r] = c[N[k]]
-  x[N[k]] = t
-  x[B[r]] = 0
-  B[r], N[k] = N[k], B[r]
-  state.iter = state.iter + 1
-  for i, e in d:elts() do
-    if i ~= B[r] then
-      x[B[i]] = x[B[i]] - d[i] * t
-    end
-  end
-
-  log('new basis is:'..inspect(B))
-  log('non-basis elements are:'..inspect(N))
-  log('new inverse basis matrix:'..A_b_inv)
-  log('A*x='..(A:t()*x))
-  return timer:Do("LPSolve",timer,state, c, x, A, b, c_b, A_b, B, N, A_b_inv)
+  log('increase this step has ratio: '..t)
+  snippets.report("leaving var found: ", t, r, d)
+  return timer:Do("UpdateBasis", timer, state, t, r, k, d, A_k, x_b, c_b, A_b, A_b_inv, B, N, A, c, Z)
 end
 
-function taskMap.PostSolve(timer, state, solution)
-  -- need to take solution and get from it:
-  -- recipes used, net items produced, net items consumed
+function taskMap.UpdateBasis(timer, state, t, r, k, d, A_k, x_b, c_b, A_b, A_b_inv, B, N, A, c, Z)
+  local v, u, vu = vector.new(#x_b,{[r]=1}), A_k-A_b[r], matrix.new(#x_b)
+  vu[r] = u
+  A_b_inv = A_b_inv - ((1/(1+(u * (A_b_inv * v))) ) * (A_b_inv * vu * A_b_inv))
+  if t.n ~= 0 then
+    for i, e in d:elts() do
+      if not Z[i] and i ~= r then
+        x_b[i] = x_b[i] - t * e
+      end
+    end
+  end
+  state.iter, x_b[r], c_b[r], B[r], N[k], A_b[r] = state.iter + 1, t, c[N[k]], N[k], not Z[B[r]] and B[r] or nil, A_k
+  snippets.report("basis updated", A_b, A_b_inv, x_b, c_b, B, N, Z)
+  return timer:Do("FindEnteringVar", timer, state, x_b, c_b, A_b, A_b_inv, B, N, A, c, Z)
+end
 
+function taskMap.PostSolve(state, solution, decompressor, solutiontoitems)
+  local recipesUsed =  solution * decompressor
+  log('recipes used:'.. recipesUsed)
+  local itemsProduced = solutiontoitems * recipesUsed
+  log('items produced:'..itemsProduced)
+  return state.element:Update("finished", state.__inverseMap, recipesUsed, itemsProduced)
 end
 
 return {}
