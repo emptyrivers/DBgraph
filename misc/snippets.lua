@@ -68,6 +68,24 @@ function snippets.rawcopy(o, seen)
   return no
 end
 
+function snippets.report(message, ...)
+  local t = {message}
+  for i, v in ipairs{...} do
+    if type(v) == "table" then
+      if getmetatable(v) and getmetatable(v).__tostring then
+        table.insert(t, tostring(v))
+      else
+        table.insert(t, inspect(v))
+      end
+    else
+      table.insert(tostring(v) or "nil")
+    end
+  end
+  log(table.concat(t,"\n ------------------------------------------------")) 
+end
+
+
+
 function snippets.NewQueue()
   return {
     first = 0,
