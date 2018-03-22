@@ -212,8 +212,6 @@ local function __mul(a, b)
       c = smmul(b, a) -- scalar multiplication is commutative
    elseif type(b) == "table" and b.type == "vector" then
       c = mvmul(a, b)
-   elseif type(a) == "table" and a.type == "vector" then
-      c = vmmul(a,b)
    elseif type(a) == "table" and type(b) == "table" and a.type == "matrix" and b.type == "matrix" then
       c = mmmul(a, b)
    else 
