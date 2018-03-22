@@ -85,17 +85,19 @@ vectorMt.__index = __index
 
 local function __newindex(self, i, e)
    if type(e) == 'number' then
-    if e == 0 then 
-        self[i] = nil
-    else
-      self.elements[i] = rational(e)
-    end
-   elseif e.type == "rational" then
-    if e.n ~= 0 then 
-      self.elements[i] = e
-    else
-      self.elements[i] = nil
-    end  
+      if e == 0 then 
+         self.elements[i] = nil
+      else
+         self.elements[i] = rational(e)
+      end
+   elseif type(e) == "table" and e.type == "rational" then
+      if e.n ~= 0 then 
+         self.elements[i] = e
+      else
+         self.elements[i] = nil
+      end  
+   else
+      error("invalid type",2)
    end
 end
 vectorMt.__newindex = __newindex
