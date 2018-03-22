@@ -4,24 +4,16 @@ for k, v in pairs(defines.events) do
   _G[k] = v -- because fuck writing defines.events.on_whatever_event every damn time!
 end
 
-
 -- modules
 local lib = require "lib"
 local widgets = require "modules.widgets"
-local snippets = require "misc.snippets"
-local logger   = require "misc.logger"
+local util = require "util"
 inspect  = require "inspect"
+snippets = require "misc.snippets"
+logger   = require "misc.logger"
 require "modules.LPSolve"
 require "modules.DataStructures"
 
--- upvalues
-local taskMap     = lib.PocketWatch.taskMap
-local snippets    = snippets
-local rational = lib.rational
-local rationalize = rational.rationalize
-
--- upvalues to be assigned in init/load
-local timers, models
 
 local function logCommand(event)
   for _, node in pairs(global.fullGraph.nodes) do
@@ -118,7 +110,6 @@ end)
 script.on_event(on_player_removed, function(event)
   lib.GUI:Delete(event.player_index)
 end)
-
 --[[ 
 remote.add_interface("rivers",
   {
