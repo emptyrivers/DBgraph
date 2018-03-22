@@ -182,16 +182,14 @@ widgets.input_form_results_list = {
     direction = "vertical",
   },
   methods = { 
-    Update = function(self,result, solution, dictionary)
+    Update = function(self,result, dictionary, solution)
       self:Clear()
       game.print(result)
       if result == "finished" then    
         local recipetoint = dictionary.recipe
         for k,v in solution:elts() do
           local recipe = recipetoint[k]
-          if not recipe:find("^%@PC_SOURCE%@") and not recipe:find("^%@PC_ARTIFICIAL%@") then
-            self:Add(widgets.basic_label).caption = recipe..":"..v
-          end
+          self:Add(widgets.basic_label).caption = recipe..":"..v
         end
       elseif result == "infeasible" then
         self:Add(widgets.basic_label).caption = solution.id.." has no valid sources"
