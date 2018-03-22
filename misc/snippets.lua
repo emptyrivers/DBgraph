@@ -73,27 +73,19 @@ function snippets.NewQueue()
     first = 0,
     last  = 0,
     pop  = function(self) --technically unsafe, but you'd have to try really hard to saturate this queue
-      local val
-      repeat -- allows us to take something out of the middle of the queue, but defer the cost of updating the queue until we pop it
-        if self.first == self.last then return end
-        self.first = self.first + 1
-        val = self[self.first]
-      until self.queued[val]
-      self.queued[val] = nil
+      if self.first == self.last then return end
+      local val = self[self.first]
       self[self.first] = nil
       self.first = self.first + 1
       return val
     end,
     push = function(self, toPush)
-      if self.queued[toPush]  then return end
       self[self.last] = toPush
       self.last = self.last + 1
-      self.queued[toPush] = self.last
     end,
     len = function(self)
       return self.last - self.first
     end,
-    queued = {},
   }
 end
 function snippets.regVec(v)
