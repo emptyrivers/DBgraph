@@ -219,7 +219,7 @@ local function __mul(c, v)
       end
     elseif v.type == "matrix" then
         assert(v.rows == c.size, "inner dimensions must agree")
-        w = vector.new(c.size)
+        w = vector.new(v.columns)
         for i, row in v:vects() do
             for j, val in row:elts() do
                 w[j] = w[j] + val * c[i]
