@@ -37,8 +37,7 @@ local vector = {}
 local vectorMt = {}
 local weakMt = {__mode = "kv"}
 local prototype = {size = 0, type = "vector"}
-local rational = require "libs.rational"
-
+local eps, abs = 1E-7, math.abs
 --**ADDED BY RIVERS**
 
 ----
@@ -57,7 +56,7 @@ function vector.new(size, elements)
    setmetatable(x, vectorMt)
    x.size = size
    for i, e in pairs(elements) do
-      x[i] = rational(e)
+      x[i] = e
    end
    return x
 end
@@ -79,25 +78,15 @@ setmetatable(vector, {__call=__call})
 ----
 
 local function __index(self, i)
-   return self.elements[i] or rational.zero
+   return self.elements[i] or 0
 end
 vectorMt.__index = __index
 
 local function __newindex(self, i, e)
-   if type(e) == 'number' then
-      if e == 0 then 
-         self.elements[i] = nil
-      else
-         self.elements[i] = rational(e)
-      end
-   elseif type(e) == "table" and e.type == "rational" then
-      if e.n ~= 0 then 
-         self.elements[i] = e
-      else
-         self.elements[i] = nil
-      end  
+   if type(e) == "number" and abs(e) < eps then
+    self.elements[i] = nil
    else
-      error("invalid type",2)
+    self.elements[i] = e
    end
 end
 vectorMt.__newindex = __newindex
@@ -108,13 +97,13 @@ local function __eq(u, v)
    local eq = u.size == v.size
    if eq then
       for i, e in u:elts() do
-         eq = (e == v[i])
+         eq = ( abs(e - v[i]) < eps)
          if not eq then break end
       end
    end
    if eq then
       for i, e in v:elts() do
-         eq = (e == u[i])
+         eq = ( abs(e - u[i]) < eps)
          if not eq then break end
       end
    end
@@ -142,7 +131,7 @@ local function __le(v,n)
         end
     else
         for i,e in v:elts() do
-            if e > n then return false end
+            if e > n and abs(e - n) > eps then return false end
         end
     end
     return true
@@ -161,8 +150,8 @@ local function __lt(v,n)
             return false
         end
     else
-        for i,e in v:elts() do
-            if e >= n then return false end
+        for i,e in v:elts() do -- considered equal if within eps of each other, check if not less
+            if e > n or abs(e - n) < eps then return false end
         end
     end
     return true
@@ -212,7 +201,7 @@ local function __mul(c, v)
       for i, e in v:elts() do
          w[i] = c * e
       end
-   elseif type(v) == "number" or v.type == "rational" then 
+   elseif type(v) == "number" then 
       w = vector.new(c.size)
       for i, e in c:elts() do
          w[i] = v * e
@@ -226,7 +215,7 @@ local function __mul(c, v)
             end
         end
     else
-      w = rational.zero
+      w = 0
       for i, e in v:elts() do
         w = w + c[i] * e
       end
@@ -303,17 +292,13 @@ vector.map = map
 
 -- Count the number of nonzero elements in a matrix.
 local function nonzero(self)
-   local z = 0
-   for i, e in self:elts() do
-      z = z + 1
-   end
-   return z
+    return table_size(self)
 end
 prototype.nonzero = nonzero
 
 -- Returns the value of the largest element in self.
 local function max(self)
-   local max = self[1]
+   local max = 0
    for i, e in self:elts() do
       if e > max then max = e end
    end
@@ -324,22 +309,13 @@ prototype.max = max
 
 -- Returns the value of the smallest element in self.
 local function min(self)
-   local min = self[1]
+   local min = math.huge
    for i, e in self:elts() do
       if e < min then min = e end
    end
    return min
 end
 prototype.min = min
-
-
-----
----- utility functions
-----
-
--- find the dot product of vectors u and v
-
-
 
 
 return vector

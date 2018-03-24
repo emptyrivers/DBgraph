@@ -7,7 +7,7 @@ local HyperGraph = require "libs.HyperGraph"
 local taskMap = require("libs.PocketWatch").taskmap
 local inspect = require "inspect"
 local lib = require "lib"
-local integerize = lib.rational.integerize
+
 -- object
 local widgets = {}
 
@@ -189,10 +189,10 @@ widgets.input_form_results_list = {
         local recipetoint = dictionary.recipe
         for k,v in solution:elts() do
           local recipe = recipetoint[k]
-          self:Add(widgets.basic_label).caption = ("%s:%.2f"):format(recipe,lib.rational.eval(v))
+          self:Add(widgets.basic_label).caption = ("%s:%3.2g"):format(recipe,v)
         end
       elseif result == "infeasible" then
-        self:Add(widgets.basic_label).caption = solution.id.." has no valid sources"
+        self:Add(widgets.basic_label).caption = "no valid solution"
       end
     end
   }

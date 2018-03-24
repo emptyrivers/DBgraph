@@ -1,6 +1,5 @@
 
 local libs = {
-    rational = require "libs.rational",
     vector = require "libs.vector",
     matrix = require "libs.matrix",
     HyperGraph = require "libs.HyperGraph",
