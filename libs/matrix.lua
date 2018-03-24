@@ -1,47 +1,17 @@
 -- PUMICE Copyright (C) 2009 Lars Rosengreen (-*-coding:iso-safe-unix-*-)
 -- released as free software under the terms of MIT open source license
 
--- A sparse matrix data structure.  Elements in the matrix that are
--- zero take up no memory.
+-- This gives matrices in column-major form.
+-- M[i][j] indexes the ith column, jth row
 
--- to create a matrix do something like:
--- A = matrix{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}
---   -or more concisely-
--- B = matrix[[1 2 3; 4 5 6; 7 8 9]]
-
--- to perform basic matrix operations do something like:
--- C = A - B <-- addition
--- D = 2 * A <-- scalar multiplication
--- E = A * B <-- matrix multiplication
-
--- Internal structure of a matrix
---
--- M = { rows,        <-- number of rows in the matrix
---       columns,     <-- number of columns in the matrix
---       type,        <-- always "matrix"; used for comparisons with
---                        other data structures            
---       vectors = { [1] = vector, <-- each row in the matrix is stored 
---                   [2] = vector,     as a sparserow vector internally;
---                                     the total number of vectors is
---                   ...               rows, and the size of each row
---                                     vector is columns
--- 
---                   [rows] = vector } }
-
-
-local vector = require "libs.vector"
+local vector = require("lib").vector
 local inspect = require "inspect"
 local matrix = {}
 local matrixMt = {}
 local prototype = {type = "matrix"}
 matrix.mt = matrixMt
 
-----
----- constructors
-----
 
--- Create a new matrix object of the given size.  All entries in the
--- returned matrix are 0.
 function matrix.new(rows, columns)
    local columns = columns or rows
    local M = {}
@@ -50,9 +20,8 @@ function matrix.new(rows, columns)
       M[k] = v
    end
    M.rows, M.columns = rows, columns
-   if type(rows) ~= 'number' then error('????',2) end
-   for i = 1, rows do
-      vectors[i] = vector.new(columns)
+   for i = 1, columns do
+      vectors[i] = vector.new(rows)
    end
    M.vectors = vectors
    setmetatable(M, matrixMt)
@@ -63,13 +32,9 @@ end
 -- Create a matrix from a nested table (column major form).
 local function matrixFromTable(t, r, c)
     local m = matrix.new(r,c)
-    for j, column in pairs(t) do
-        for i, val in pairs(column) do
-            if type(m[j]) ~= 'table' then 
-                log(inspect(column))
-                error("invalid vector type at: "..i..','..j..','..r..','..c,2) 
-            end
-            m[j][i] = val
+    for i, column in pairs(t) do
+        for j, val in pairs(column) do
+            m[i][j] = val
         end
     end
     return m
@@ -80,10 +45,7 @@ local function __call(_, a,r,c)
 end
 setmetatable(matrix, {__call=__call})
 
-
-----
----- metamethods
-----
+-- metamethods
 
 local function __index(self, i)
    return self.vectors[i] or matrix[i]
@@ -97,46 +59,37 @@ matrixMt.__newindex = __newindex
 
 -- test for equality
 local function __eq(A, B)
-   local eq = A.rows == B.rows and A.columns == B.columns
-   if eq then
-      for i, v in A:vects() do
-         eq = (v == B[i])
-         if not eq then break end
-      end
-   end
-   if eq then
-      for i, v in B:vects() do
-         eq = (v == A[i])
-         if not eq then break end
-      end
-   end
-   return eq
+  if A.rows ~= B.rows or A.columns ~= B.columns then return end
+  for i, v in A:vects() do
+    if v ~= B[i] then return end
+  end
+  for i, v in B:vects() do
+    if v ~= A[i] then return end
+  end
 end
 matrixMt.__eq = __eq
 
 
--- find A + B
 local function __add(A, B)
-   local rows, columns = A.rows, A.columns
-   assert(rows == B.rows and columns == B.columns,
+  local rows, columns = A.rows, A.columns
+  assert(rows == B.rows and columns == B.columns,
           "matrices must both be the same size")
-   local C = A:copy()
-   for i, v in B:vects() do
-      C[i] = C[i] + v
-   end
-   return C
+  local C = matrix.new(rows, columns)
+  for i, v in B:vects() do
+    C[i] = A[i] + v
+  end
+  return C
 end
 matrixMt.__add = __add
 
 
--- find A - B
 local function __sub(A, B)
    local rows, columns = A.rows, A.columns
    assert(rows == B.rows and columns == B.columns,
-          "matrices must both be the same size")
-   local C = A:copy()
+           "matrices must both be the same size")
+   local C = matrix.new(rows, columns)
    for i, v in B:vects() do
-      C[i] = C[i] - v
+     C[i] = A[i] - v
    end
    return C
 end
@@ -171,36 +124,31 @@ local function smmul(c, A)
 end
 
 local function mvmul(A, v)
-   if A.columns ~= v.size then 
-    log('\n'..tostring(A)..'\n'..tostring(v))
-    error( "inner dimensions must agree",3) 
-   end
-   local w = vector.new(A.rows)
-   for i, row in A:vects() do
-      -- u is a row in A
-      local s = 0
-      for j, val in row:elts() do
-         s = s + v[j] * val
-      end
-      w[i] = s
-   end
-   return w
+  if A.columns ~= v.size then error( "inner dimensions must agree",3) end
+  local w = vector.new(A.rows)
+  for i, column in A:vects() do
+    local v_i = v[i]
+    for j, val in column:elts() do
+      w[i] = w[i] + v_i * val
+    end
+  end
+  return w
 end
--- Uses the textbook column flipping algorithm, but does skip over
--- elements that are zero.
+
+-- A*B 
 local function mmmul(A, B)
-   assert(A.columns == B.rows, "inner dimensions must agree")
-   local C = matrix.new(A.rows, B.columns)
-   for i = 1, B.columns do
-      for j, v in A:vects() do
-         local p = 0
-         for k, e in v:elts() do
-            p = p + e * B[k][i]
-         end
-         C[j][i] = p
+  assert(A.columns == B.rows, "inner dimensions must agree")
+  local C = matrix.new(A.rows, B.columns)
+  for i, column in C:vects() do
+    for j in column:elts() do
+      local newval = 0
+      for k = 1, A.columns do
+        newval = newval + B[j][k] *  A[k][i] 
       end
-   end
-   return C
+      column[j] = newval
+    end
+  end
+  return C
 end
 
 local function __mul(a, b)
@@ -298,10 +246,6 @@ local function transpose(self)
    local M = matrix.new(self.columns, self.rows)
    for i, v in self:vects() do
       for j, e in v:elts() do
-        if not M[j] then 
-            log('attempt to assign value: '..e..'from:'..i..','..j..' to:\n'..tostring(M))
-            error('missing vector #'..j,2) 
-        end
          M[j][i] = e
       end
    end
