@@ -4,8 +4,6 @@ local snippets = require "misc.snippets"
 local logger = require "misc.logger"
 local inspect = require "inspect"
 local taskMap = lib.PocketWatch.taskMap
-local rational = lib.rational
-local rationalize = rational.rationalize
 
 function BuildTechTree()
   --we only care about techs that unlock recipes...
@@ -63,9 +61,9 @@ function BuildGraph(graph, forceName, shouldRebuild)
         isFakeRecipe = true,
         category = name,
         enabled = true,
-        energy = rational.zero,
-        ingredients = {["@PC_SOURCE@"..name] = rational.one},
-        products = { [prototype.fluid.name] = rationalize(60 * prototype.pumping_speed)},
+        energy = 0,
+        ingredients = {["@PC_SOURCE@"..name] = 1},
+        products = { [prototype.fluid.name] = 60 * prototype.pumping_speed},
       }
       graph:AddNode({type = "SOURCE", id = "@PC_SOURCE@"..name})
       if not graph.nodes[prototype.fluid.name] then
@@ -88,7 +86,7 @@ function BuildGraph(graph, forceName, shouldRebuild)
           if not graph.nodes[sourceNode] then
             graph:AddNode({type = "fluid", id = properties.required_fluid})
           end
-          data.ingredients[properties.required_fluid] = rationalize(properties.fluid_amount)
+          data.ingredients[properties.required_fluid] = properties.fluid_amount
         else
           graph:AddNode({type = "SOURCE", id = "@PC_SOURCE@"..name})
           data.ingredients["@PC_SOURCE@"..name] = 1
@@ -98,7 +96,7 @@ function BuildGraph(graph, forceName, shouldRebuild)
           if not graph.nodes[name] then           
             graph:AddNode({id = name, type = product.type})
           end
-          data.products[product.name] = rationalize(product.amount or (product.probability * .5 * (product.amount_min + product.amount_max)))
+          data.products[product.name] = product.amount or (product.probability * .5 * (product.amount_min + product.amount_max))
         end
         graph:AddEdge(data)
     end
@@ -122,18 +120,18 @@ function BuildGraph(graph, forceName, shouldRebuild)
           if not graph.nodes[name] then           
             graph:AddNode({id = name, type = ingredient.type})
           end
-          data.ingredients[name] = rational(ingredient.amount)
+          data.ingredients[name] = ingredient.amount
         end
       else --this is a source!
         graph:AddNode({type = "SOURCE", id = "@PC_SOURCE@"..name})
-        data.ingredients["@PC_SOURCE@"..name] = rational.one
+        data.ingredients["@PC_SOURCE@"..name] = 1
       end
       for _, product in ipairs(recipe.products) do
         local name = product.name
         if not graph.nodes[name] then           
           graph:AddNode({id = name, type = product.type})
         end
-        data.products[name] = rationalize(product.amount or (product.probability * .5 * (product.amount_min + product.amount_max)))
+        data.products[name] = product.amount or (product.probability * .5 * (product.amount_min + product.amount_max))
       end
       for id, amount in pairs(data.ingredients) do
         if data.products[id] then

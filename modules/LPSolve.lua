@@ -2,7 +2,7 @@
 -- customized implementation of Revised Simplex method
 
 local lib = require "lib"
-local taskMap, matrix, vector, rational = lib.PocketWatch.taskMap, lib.matrix, lib.vector, lib.rational
+local taskMap, matrix, vector = lib.PocketWatch.taskMap, lib.matrix, lib.vector
 
 local util  =  require "util"
 local logger = require "misc.logger"
@@ -75,7 +75,7 @@ function taskMap.GetProblemConstants(timer, state, graphName, queue, visited, w,
       AddMapping(state,fakeSource,"source")
       local fakeRecipe = "@PC_SOURCE@"..node.id
       AddMapping(state,fakeRecipe,"recipe")
-      w[sourcetoint[fakeSource]] = rational.inf
+      w[sourcetoint[fakeSource]] = math.huge
       u_it[recipetoint[fakeRecipe]] = {[itemtoint[node.id]]=1}
       u_s[recipetoint[fakeRecipe]] = {[sourcetoint]=1}
     end
@@ -136,14 +136,14 @@ local function simpleTransfer(v, deleted)
 end
 
 local function simpleFeed(v, known, A, deleted, target)
-  local r = rational.zero
+  local r = 0
   for i, e in v:elts() do
     if target[i] then return end
     if not deleted.row[i] and e > 0 then 
       for j, f in A[i]:elts() do 
         if f < 0 then 
           if j ~= known then return end
-          r = rational.max(-f/e, r) 
+          r = math.max(r, -f/e)
         end
       end
     end
@@ -239,7 +239,7 @@ function taskMap.ReduceProblem(timer, state, toRemove, A, b, c, Y)
   if solution then
     local x = vector.new(A_small.columns)
     for item, recipe in pairs(solution) do
-      x[recipe] = rational.max(x[recipe], 1/A_small[recipe][item])
+      x[recipe] = mak.max(x[recipe], 1/A_small[recipe][item])
     end
     log(tostring(Y_small))
     return timer:Do("PostSolve", state, x, Y_small, state.solutiontoitems)
@@ -256,12 +256,12 @@ function taskMap.Phase1(timer,state, A, b, c)
     j = j + 1
     A[j] = vector.new(m,{[i]=-1})
     surplus[j] = true
-    if b[i] ~= rational.zero then
+    if b[i] ~= 0 then
       j = j + 1
       A[j] = vector.new(m, {[i]=1})
       artificial[j] = true
-      newc[j] = rational.one
-      c_b[i] = rational.one
+      newc[j] = 1
+      c_b[i] = 1
     end
     B[i] = j
     A_b[i] = A[j]
@@ -334,7 +334,7 @@ end
 
 function taskMap.FindLeavingVar(timer, state, k, A_k, x_b, c_b, A_b, A_b_inv, B, N, A, c, Z)
   local d = A_k * A_b_inv
-  local u, t, r = true, rational.inf
+  local u, t, r = true, math.huge
   for i,e in d:elts() do
     if e > 0 then
       u = false

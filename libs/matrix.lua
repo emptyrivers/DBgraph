@@ -30,7 +30,6 @@
 
 
 local vector = require "libs.vector"
-local rational = require "libs.rational"
 local inspect = require "inspect"
 local matrix = {}
 local matrixMt = {}
@@ -179,7 +178,7 @@ local function mvmul(A, v)
    local w = vector.new(A.rows)
    for i, row in A:vects() do
       -- u is a row in A
-      local s = rational.zero
+      local s = 0
       for j, val in row:elts() do
          s = s + v[j] * val
       end
@@ -194,7 +193,7 @@ local function mmmul(A, B)
    local C = matrix.new(A.rows, B.columns)
    for i = 1, B.columns do
       for j, v in A:vects() do
-         local p = rational.zero
+         local p = 0
          for k, e in v:elts() do
             p = p + e * B[k][i]
          end
@@ -202,13 +201,13 @@ local function mmmul(A, B)
       end
    end
    return C
-end        
+end
 
 local function __mul(a, b)
    local c
-   if type(a) == "number" or a.type == "rational" then
+   if type(a) == "number"  then
       c = smmul(a, b)
-   elseif type(b) == "number" or b.type == "rational" then
+   elseif type(b) == "number" then
       c = smmul(b, a) -- scalar multiplication is commutative
    elseif type(b) == "table" and b.type == "vector" then
       c = mvmul(a, b)
@@ -239,8 +238,8 @@ local function __tostring(self)
       for i = 1, rows do
          s[i] = {}
          for j = 1, columns do
-            local e = tostring(self[i][j])
-            s[i][j] = e
+            local e = "%"..digits..".3G"
+            s[i][j] = e:format(self[i][j])
             if #e > max then max = #e end
          end
       end
@@ -318,15 +317,10 @@ matrix.t = transpose
 function matrix.id(n)
    local M = matrix.new(n, n)
    for i = 1, n do
-      M[i][i] = rational.one
+      M[i][i] = 1
    end
    return M
 end
 
-function matrix.join(M, i, j, r)
-    -- returns a matrix with 1 fewer row, such that M_new[i] = M_old[i] + r * M[j], and replace M[j] with zeros
-    M[i], M[j] = M[i] + r * M[j], vector.new(M.rows)
-    return M
-end
 
 return matrix
