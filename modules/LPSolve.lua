@@ -8,6 +8,7 @@ local util  =  require "util"
 local logger = require "misc.logger"
 local snippets = require "misc.snippets"
 local inspect = require 'inspect'
+local eps = 1E-7 -- this will be our "machine epsilon". Instead of checking for equality, check if difference is less than eps
 
 local function AddMapping(state, toMap,type)
   if state.__forwardMap[type][toMap] then return end
@@ -37,7 +38,8 @@ function taskMap.BeginProblem(timer,graphName,target,guiElement)
 end
 
 function taskMap.GetProblemConstants(timer, state, graphName, queue, visited, w, u_s, u_it) 
-  local graph, itemtoint, recipetoint, sourcetoint = _G[graphName], state.__forwardMap.item, state.__forwardMap.recipe,state.__forwardMap.source
+  local     graph,               itemtoint,               recipetoint,               sourcetoint = 
+    _G[graphName], state.__forwardMap.item, state.__forwardMap.recipe, state.__forwardMap.source
   for i = 1,40 do
     local nodeid = queue:pop()
     if not nodeid then return timer:Do("BuildDataStructs",timer,state, w, u_s, u_it) end
@@ -239,7 +241,7 @@ function taskMap.ReduceProblem(timer, state, toRemove, A, b, c, Y)
   if solution then
     local x = vector.new(A_small.columns)
     for item, recipe in pairs(solution) do
-      x[recipe] = mak.max(x[recipe], 1/A_small[recipe][item])
+      x[recipe] = math.max(x[recipe], 1/A_small[recipe][item])
     end
     log(tostring(Y_small))
     return timer:Do("PostSolve", state, x, Y_small, state.solutiontoitems)
@@ -256,7 +258,7 @@ function taskMap.Phase1(timer,state, A, b, c)
     j = j + 1
     A[j] = vector.new(m,{[i]=-1})
     surplus[j] = true
-    if b[i] ~= 0 then
+    if b[i] > 0 then
       j = j + 1
       A[j] = vector.new(m, {[i]=1})
       artificial[j] = true
@@ -306,14 +308,14 @@ function taskMap.FindEnteringVar(timer, state, x_b, c_b, A_b, A_b_inv, B, N, A, 
   local k, A_k
   for i, j in pairs(N) do
     local A_j = A[j]
-    if c[j] - A_j * y < 0 then
+    if c[j] - A_j * y < -eps then
       k, A_k = i, A_j
       break
     end
   end
   if not k then
     if state.phase == 1 then
-      if (x_b * c_b).n == 0 then
+      if (x_b * c_b) < eps then
         snippets.report("feasible solution found: onto phase 2", x_b, B, Z)
         return timer:Do("Phase2", timer, state, x_b, c_b, A_b, A_b_inv, B, N, A, c, Z)
       else
@@ -356,7 +358,7 @@ function taskMap.UpdateBasis(timer, state, t, r, k, d, A_k, x_b, c_b, A_b, A_b_i
   local v, u, vu = vector.new(#x_b,{[r]=1}), A_k-A_b[r], matrix.new(#x_b)
   vu[r] = u
   A_b_inv = A_b_inv - ((1/(1+(u * (A_b_inv * v))) ) * (A_b_inv * vu * A_b_inv))
-  if t.n ~= 0 then
+  if t > eps then
     for i, e in d:elts() do
       if not Z[i] and i ~= r then
         x_b[i] = x_b[i] - t * e

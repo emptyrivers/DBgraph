@@ -37,7 +37,7 @@ local vector = {}
 local vectorMt = {}
 local weakMt = {__mode = "kv"}
 local prototype = {size = 0, type = "vector"}
-
+local eps, abs = 1E-7, math.abs
 --**ADDED BY RIVERS**
 
 ----
@@ -83,7 +83,7 @@ end
 vectorMt.__index = __index
 
 local function __newindex(self, i, e)
-   if e == 0 then
+   if type(e) == "number" and abs(e) < eps then
     self.elements[i] = nil
    else
     self.elements[i] = e
@@ -97,13 +97,13 @@ local function __eq(u, v)
    local eq = u.size == v.size
    if eq then
       for i, e in u:elts() do
-         eq = (e == v[i])
+         eq = ( abs(e - v[i]) < eps)
          if not eq then break end
       end
    end
    if eq then
       for i, e in v:elts() do
-         eq = (e == u[i])
+         eq = ( abs(e - u[i]) < eps)
          if not eq then break end
       end
    end
@@ -131,7 +131,7 @@ local function __le(v,n)
         end
     else
         for i,e in v:elts() do
-            if e > n then return false end
+            if e > n and abs(e - n) > eps then return false end
         end
     end
     return true
@@ -150,8 +150,8 @@ local function __lt(v,n)
             return false
         end
     else
-        for i,e in v:elts() do
-            if e >= n then return false end
+        for i,e in v:elts() do -- considered equal if within eps of each other, check if not less
+            if e > n or abs(e - n) < eps then return false end
         end
     end
     return true
@@ -316,15 +316,6 @@ local function min(self)
    return min
 end
 prototype.min = min
-
-
-----
----- utility functions
-----
-
--- find the dot product of vectors u and v
-
-
 
 
 return vector
