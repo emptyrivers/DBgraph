@@ -4,7 +4,7 @@
 -- This gives matrices in column-major form.
 -- M[i][j] indexes the ith column, jth row
 
-local vector = require("lib").vector
+local vector = require "libs.vector"
 local inspect = require "inspect"
 local matrix = {}
 local matrixMt = {}
@@ -13,29 +13,30 @@ matrix.mt = matrixMt
 
 
 function matrix.new(rows, columns)
-   local columns = columns or rows
-   local M = {}
-   local vectors = {}
-   for k, v in pairs(prototype) do
-      M[k] = v
-   end
-   M.rows, M.columns = rows, columns
-   for i = 1, columns do
-      vectors[i] = vector.new(rows)
-   end
-   M.vectors = vectors
-   setmetatable(M, matrixMt)
-   return M
+  local columns = columns or rows
+  local M = {}
+  local vectors = {}
+  for k, v in pairs(prototype) do
+    M[k] = v
+  end
+  M.rows, M.columns = rows, columns
+  for i = 1, columns do
+    vectors[i] = vector.new(rows)
+  end
+  M.vectors = vectors
+  setmetatable(M, matrixMt)
+  return M
 end
 
 
 -- Create a matrix from a nested table (column major form).
 local function matrixFromTable(t, r, c)
     local m = matrix.new(r,c)
-    for i, column in pairs(t) do
-        for j, val in pairs(column) do
-            m[i][j] = val
-        end
+    for j, column in pairs(t) do
+      for i, val in pairs(column) do
+        if not m[j] then log(inspect(m)) end
+        m[j][i] = val
+      end
     end
     return m
 end
@@ -187,7 +188,7 @@ local function __tostring(self)
          s[i] = {}
          for j = 1, columns do
             local e = "%"..digits..".3G"
-            s[i][j] = e:format(self[i][j])
+            s[i][j] = e:format(self[j][i])
             if #e > max then max = #e end
          end
       end
@@ -265,6 +266,48 @@ function matrix.id(n)
    end
    return M
 end
+
+function matrix.lu(A)
+  -- returns P, L, U, s.t. AP = LU
+  -- since our matrices are column major, we will pivot columns instead of the normal rows
+  -- this ends up making the whole thing look nearly identical to the regular algorithm
+  local m = A.columns
+  local P, L, U = {}, matrix.id(m), A:copy() 
+  for i=1, m do
+    P[i] = i
+  end
+  local abs = math.abs
+  for k = 1, m - 1 do
+    local pivot, imax = 0
+    for i = k, m do
+      local val = abs(U[i][k])
+      if val > pivot then
+        imax = i
+        pivot = val
+      end
+    end
+    -- swap columns of P, L, U
+    if imax ~= k then
+      P[k], P[imax] = P[imax], P[k]
+      U[k], U[imax] = U[imax], U[k]
+    end
+    for i = k + 1, m do
+       U[i][k] = U[i][k] / pivot
+    end
+    for j = k + 1, m do
+       for i = k + 1, m do
+          U[i][j] = U[i][j] - U[i][k] * U[k][j]
+       end
+    end
+  end
+  for i = 1, m do
+    for j = i + 1, m do
+      L[i][j], U[i][j] = U[i][j], 0
+    end
+  end
+  return P, L, U
+end
+
 
 
 return matrix
