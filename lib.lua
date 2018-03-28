@@ -34,7 +34,6 @@ function repairMetatables(broken) --should do this smarter, not harder
 end
 function lib:Init()
     for k, v in pairs(libs) do
-        log('initializing '..k)
         if v.Init then
             v:Init()
         end
