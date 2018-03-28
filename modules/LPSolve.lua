@@ -87,14 +87,14 @@ end
 
 function taskMap.BuildDataStructs(timer,state, w, u_s, u_it)
   local q, p, n = #state.__inverseMap.item, #state.__inverseMap.source, #state.__inverseMap.recipe
-  local A_c = matrix(u_it,n,q)
+  local A_c = matrix(u_it,q, n)
   local A_r = A_c:t()
   local b = vector(state.target)
   b.size = q
-  local c =  matrix(u_s, n, p) * vector(w)
-  state.solutiontoitems = A_r:copy()
+  local c =  vector(w) * matrix(u_s, p, n)
+  state.solutiontoitems = A_c:copy()
   local queue, Y, deleted--[[ , flipped ]] = snippets.NewQueue(), {}, {row = {}, column = {},}--[[ , {} ]]
-  for r, row in A_r:vects() do
+  for r in A_r:vects() do
     if not state.target[r] then
       queue:push(r)
     end
@@ -109,7 +109,7 @@ function taskMap.BuildDataStructs(timer,state, w, u_s, u_it)
     end ]]
   end
   --state.flipped = flipped
-  for i = 1, A_c.rows do
+  for i = 1, n do
     table.insert(Y,vector.new(A_c.rows,{[i]=1}))
   end
   return timer:Do("Simplify", timer, state, queue, deleted, A_r, A_c, b, c, Y)
@@ -157,6 +157,7 @@ function taskMap.Simplify(timer, state, queue, deleted, A_r, A_c, b, c, Y)
   for i = 1, 40 do
     local r = queue:pop()
     if not r then
+      snippets.report('about to reduce',deleted, A_r, b, c)
       return timer:Do("ReduceProblem", timer, state, deleted, A_r, b, c, Y)
     end
     row = A_r[r]
@@ -204,11 +205,11 @@ function taskMap.ReduceProblem(timer, state, toRemove, A, b, c, Y)
   local columns, rows = toRemove.column, toRemove.row
   local A_small = matrix.new(A.rows - table_size(rows), A.columns - table_size(columns))
   local k, l = 0,0
-  for i = 1, A.rows do
+  for i = 1, A.columns do
     if not rows[i] then
       k = k + 1
       l = 0
-      for j = 1, A.columns do
+      for j = 1, A.rows do
         if not columns[j] then
           l = l + 1
           A_small[k][l] = A[i][j]
@@ -247,12 +248,13 @@ function taskMap.ReduceProblem(timer, state, toRemove, A, b, c, Y)
     return timer:Do("PostSolve", state, x, Y_small, state.solutiontoitems)
   end
   state.decompressor= Y_small
-  return timer:Do("Phase1", timer, state, A_small:t(), b_small, c_small)
+  return timer:Do("Phase1", timer, state, A_small, b_small, c_small)
 end
 
 function taskMap.Phase1(timer,state, A, b, c) 
-  local n, m = A:size()
-  local x_b, newc, c_b, A_b, A_b_inv, B, N, surplus, artificial, isBasis = vector.new(m), vector.new(n), vector.new(m),  matrix.new(m), matrix.new(m), {}, {}, {}, {}, {}
+  local m, n = A:size()
+  local       x_b,          newc,           c_b,           A_b,  R,  B,  N, surplus, artificial, isBasis 
+  = vector.new(m), vector.new(n), vector.new(m), matrix.new(m), {}, {}, {},      {},         {},      {}
   local j = n
   for i = 1, m do
     j = j + 1
@@ -267,13 +269,12 @@ function taskMap.Phase1(timer,state, A, b, c)
     end
     B[i] = j
     A_b[i] = A[j]
-    A_b_inv[i] = A[j]:copy()
     isBasis[j] = true
     x_b[i] = b[i]
   end
-  A.rows = j
+  A.columns = j
   newc.size = j
-  for i = 1, A.rows do
+  for i = 1, A.columns do
     if not isBasis[i] then
       table.insert(N,i)
     end
@@ -289,22 +290,84 @@ function taskMap.Phase1(timer,state, A, b, c)
     state.objective = c
   end
   state.iter, state.surplus = 1, surplus
-  snippets.report("Prepared for LP algorithm:", x_b, c_b, A_b, A_b_inv, B, N, A, newc, artificial)
-  return timer:Do("FindEnteringVar", timer, state, x_b, c_b, A_b, A_b_inv, B, N, A, newc, artificial)
+  local p, L, U = matrix.lu(A_b)
+  local P= {}
+  for k, v in pairs(p) do
+    B[k], B[v] = B[v], B[k]
+    table.insert(P, #P+1)
+  end
+  state.x_b = x_b
+  state.c_b = c_b
+  state.B = B
+  state.N = A
+  state.c = newc
+  state.Z = artificial
+  state.P = P
+  state.L = L
+  state.R = R
+  state.U = U
+  return timer:Do("BTRAN", timer, state, c_b:copy(), P, L, R, U)
 end
 
-function taskMap.Phase2(timer, state, x_b, c_b, A_b, A_b_inv, B, N, A, c, Z)
+function taskMap.Phase2(timer, state)
   state.phase = 2
   state.iter = 1
   c, state.objective = state.objective
   for i,j in pairs(B) do
     c_b[i] = c[j]
   end
-  return timer:Do("FindEnteringVar",timer,state, x_b, c_b, A_b, A_b_inv, B, N, A, c, Z)
+  return timer:Do("BTRAN",timer,state, c_b:copy(), P, L, R, U, nil, x_b, c_b, L, R, U, B, N, A, c, Z)
 end
 
-function taskMap.FindEnteringVar(timer, state, x_b, c_b, A_b, A_b_inv, B, N, A, c, Z)
-  local y = A_b_inv * c_b
+local function ppairs(A, P, reversed) -- permuted pairs
+  local _inv, inc = {[0] = 0}, reversed and -1 or 1
+  for k,v in pairs(P) do
+    _inv[v] = k
+  end
+  return function(t, k)
+    local nextKey = t[_inv[k] + inc]
+    return nextKey, nextKey and A[nextKey]
+  end, P, reversed and (#P + 1) or 0
+end
+
+function taskMap.BTRAN(timer,state, y, P, L, R, U, index)
+  -- in xA = b, each of b_i = x * A[i] is a dot product
+  for iter = 1, 40 do
+    if not index then -- solve y * U 
+      for j, column in ppairs(U, P, true) do
+        for i, e in ppairs(column, P) do
+          if i ~= j then
+            y[j] = y[j] - e * y[i]
+          end
+        end
+      end
+      index = #R
+    elseif index == 0 then 
+      for j, column in ppairs(L, P) do
+        y = y/column[j]
+        for i, e in ppairs(column, P) do
+          if i ~= j then
+            y[j] = y[j] - e * y[i]
+          end
+        end
+      end
+      snippets.report("Reduced Costs found:"..y)
+      error"checklog"
+      return timer:Do("FindEnteringVar", timer, state, y, state.N, state.c, state.A)
+    else -- solve y * Rk
+      local v, p = R[index].v, P[R[index].p]
+      for i, e in ppairs(v, P) do
+        if i ~= p then
+          y[i] = y[i] - e * y[p]
+        end
+      end
+      index = index - 1
+    end
+  end
+  return timer:Do("BTRAN", timer, state, y, L, R, U, index)
+end
+
+function taskMap.FindEnteringVar(timer, state, y, N, c, A) 
   local k, A_k
   for i, j in pairs(N) do
     local A_j = A[j]
@@ -313,11 +376,12 @@ function taskMap.FindEnteringVar(timer, state, x_b, c_b, A_b, A_b_inv, B, N, A, 
       break
     end
   end
+  state.k = k
   if not k then
     if state.phase == 1 then
       if (x_b * c_b) < eps then
         snippets.report("feasible solution found: onto phase 2", x_b, B, Z)
-        return timer:Do("Phase2", timer, state, x_b, c_b, A_b, A_b_inv, B, N, A, c, Z)
+        return timer:Do("Phase2", timer, state, x_b, c_b, L, R, U, B, N, A, c, Z)
       else
         return state.element:Update("infeasible")
       end
@@ -330,12 +394,50 @@ function taskMap.FindEnteringVar(timer, state, x_b, c_b, A_b, A_b_inv, B, N, A, 
       return timer:Do("PostSolve", state, x, decompressor, solutiontoitems)
     end
   end
-  snippets.report("Entering var found: ", k, A_k)
-  return timer:Do("FindLeavingVar", timer, state, k, A_k, x_b, c_b, A_b, A_b_inv, B, N, A, c, Z)
+  return timer:Do("FTRAN", timer, state, A_k:copy(), P, L, R, U)
 end
 
-function taskMap.FindLeavingVar(timer, state, k, A_k, x_b, c_b, A_b, A_b_inv, B, N, A, c, Z)
-  local d = A_k * A_b_inv
+function taskMap.FTRAN(timer, state, k, d, P, L, R, U, index)
+  for iter = 1,20 do
+    if not index then
+      -- solve L * d
+      for j, column in ppairs(L, P) do
+        -- L is not unit-triangular, so the diagonal entries might not be 1
+        local r = d[j] / L[j][j]
+        for i, e in ppairs(column, P) do
+          if i ~= j then
+            d[i] = d[i] - e * r 
+          else
+            d[i] = r
+          end
+        end
+      end
+      iter = 1
+    elseif index > #R then
+      -- solve U * d
+      for j, column in ppairs(U, P, true) do
+        for i, e in U[j]:elts() do
+          if i ~= j then
+            d[i] = d[i] - e * d[j]
+          end
+        end
+      end
+      return timer:Do("FindLeavingVar", timer, state, d, state.k, state.x_b)
+    else
+      -- solve R * d
+      local v, p = R[index].v, R[index].p
+      for i, e in v:elts() do
+        if i ~= p then
+          d[p] = d[p] - e * d[i]
+        end
+      end
+      index = index + 1
+    end
+  end
+  return timer:Do("FTRAN", d, L, R, U, index)
+end
+
+function taskMap.FindLeavingVar(timer, state, k, d, x_b)
   local u, t, r = true, math.huge
   for i,e in d:elts() do
     if e > 0 then
@@ -349,15 +451,12 @@ function taskMap.FindLeavingVar(timer, state, k, A_k, x_b, c_b, A_b, A_b_inv, B,
   if u then
     return state.element:Update("unbounded")
   end
-  log('increase this step has ratio: '..t)
-  snippets.report("leaving var found: ", t, r, d)
-  return timer:Do("UpdateBasis", timer, state, t, r, k, d, A_k, x_b, c_b, A_b, A_b_inv, B, N, A, c, Z)
+--[[   log('increase this step has ratio: '..t)
+  snippets.report("leaving var found: ", t, r, d) ]]
+  return timer:Do("UpdateBasis", timer, state, t, r, k, d)
 end
 
-function taskMap.UpdateBasis(timer, state, t, r, k, d, A_k, x_b, c_b, A_b, A_b_inv, B, N, A, c, Z)
-  local v, u, vu = vector.new(#x_b,{[r]=1}), A_k-A_b[r], matrix.new(#x_b)
-  vu[r] = u
-  A_b_inv = A_b_inv - ((1/(1+(u * (A_b_inv * v))) ) * (A_b_inv * vu * A_b_inv))
+function taskMap.UpdateBasis(timer, state, t, r, k, d, B, N, Z, R, U)
   if t > eps then
     for i, e in d:elts() do
       if not Z[i] and i ~= r then
@@ -365,9 +464,9 @@ function taskMap.UpdateBasis(timer, state, t, r, k, d, A_k, x_b, c_b, A_b, A_b_i
       end
     end
   end
-  state.iter, x_b[r], c_b[r], B[r], N[k], A_b[r] = state.iter + 1, t, c[N[k]], N[k], not Z[B[r]] and B[r] or nil, A_k
-  snippets.report("basis updated", A_b, A_b_inv, x_b, c_b, B, N, Z)
-  return timer:Do("FindEnteringVar", timer, state, x_b, c_b, A_b, A_b_inv, B, N, A, c, Z)
+
+  --snippets.report("basis updated", A_b, A_b_inv, x_b, c_b, B, N, Z)
+  return timer:Do("BTRAN", timer, state)
 end
 
 function taskMap.PostSolve(state, solution, decompressor, solutiontoitems)
