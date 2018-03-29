@@ -141,11 +141,11 @@ local function mmmul(A, B)
   assert(A.columns == B.rows, "inner dimensions must agree")
   local C = matrix.new(A.rows, B.columns)
   for i, column in C:vects() do
-    for j in column:elts() do
+    for j = 1, #column do
       local newval = 0
       for k = 1, A.columns do
-        newval = newval + B[j][k] *  A[k][i] 
-      end
+        newval = newval + B[i][k] *  A[k][j] 
+      end 
       column[j] = newval
     end
   end
