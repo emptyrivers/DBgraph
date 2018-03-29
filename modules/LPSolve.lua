@@ -157,6 +157,7 @@ function taskMap.Simplify(timer, state, queue, deleted, A_r, A_c, b, c, Y)
   for i = 1, 40 do
     local r = queue:pop()
     if not r then
+      snippets.report('simplification done, about to reduce',deleted,A_r:t(), b, c)
       return timer:Do("ReduceProblem", timer, state, deleted, A_c, b, c, Y)
     end
     row = A_r[r]
@@ -205,11 +206,11 @@ function taskMap.ReduceProblem(timer, state, toRemove, A, b, c, Y)
   local A_small = matrix.new(A.rows - table_size(rows), A.columns - table_size(columns))
   local k, l = 0,0
   for i = 1, A.columns do
-    if not rows[i] then
+    if not columns[i] then
       k = k + 1
       l = 0
       for j = 1, A.rows do
-        if not columns[j] then
+        if not rows[j] then
           l = l + 1
           A_small[k][l] = A[i][j]
         end
@@ -323,37 +324,30 @@ function taskMap.Phase2(timer, state)
   return timer:Do("BTRAN",timer,state, c_b:copy(), state.P, state.L, state.R, state.U)
 end
 
-local function ppairs(A, P, reversed) -- permuted pairs
+local function ppairs(A, P, reversed) 
   local i, f, inc = P.i, P.f, reversed and -1 or 1
---[[   log('permuted iteration through '..(A.type and tostring(A) or inspect(A)))
-  log('using '..inspect(P))
-  log('first value will be t_'..(reversed and (#f) or 1)..' = '..(A[reversed and (#f) or 1] or 'nil')) ]]
   A = (A.type == "vector" and A.elements) or (A.type == "matrix" and A.vectors) or A
   return function(t, k)
-    --log('last value was t_'..k..' = '..(A[k] or 'nil'))
     local k_p, A_kp
     repeat
       k = k + inc
       k_p = t[i[k]]
       if not k_p then 
-        --log('we are done with the iteration')
         return
       end
       A_kp = A[k_p]
       if not A_kp then
-        --log('skipping '..k_p..' since there is no associated value.')
       end
     until A_kp
-    --log('this iteration of the loop will have t_'..(k_p or 'nil')..' = '..(A_kp or 'nil'))
     return k_p, A_kp
   end, f, reversed and (#f + 1) or 0
 end
 
 function taskMap.BTRAN(timer,state, y, P, L, R, U, index)
-  if state.iter == 20 then error'checklog' end
+  if state.iter == 10 then error'checklog' end
   for iter = 1, 40 do
     if not index then -- solve y * U 
-      snippets.report('solving y*U',y, snippets.permute(U,P))
+      log('solving y*U, y_prev='..snippets.permute(y,P))
       for j, column in ppairs(U, P, true) do
         for i, e in ppairs(column, P) do
           if i ~= j then
@@ -364,7 +358,7 @@ function taskMap.BTRAN(timer,state, y, P, L, R, U, index)
       end
       index = #R
     elseif index == 0 then 
-      snippets.report('solving y*L',y,snippets.permute(L,P))
+      log('solving y*L, y_prev='..snippets.permute(y,P))
       for j, column in ppairs(L, P) do
         for i, e in ppairs(column, P) do
           if i ~= j then
@@ -375,8 +369,9 @@ function taskMap.BTRAN(timer,state, y, P, L, R, U, index)
       snippets.report("Reduced Costs found:"..y, state.N, state.c, state.A)
       return timer:Do("FindEnteringVar", timer, state, y, state.N, state.c, state.A)
     else -- solve y * Rk
-      snippets.report('solving y*R',y,R[index].p..','..R[index].v)
+      log('solving y*R, y_prev='..snippets.permute(y,P))
       local v, p = R[index].v, P.f[R[index].p]
+      log('R\'s row is '..v..' and is at row# '..p)
       for i, e in ppairs(v, P) do
         if i ~= p then
           y[i] = y[i] - e * y[p]
@@ -424,7 +419,7 @@ function taskMap.FTRAN(timer, state, k, d, P, L, R, U, index)
   for iter = 1,20 do
     if not index then
       -- solve L * d
-      snippets.report('solving L * d',snippets.permute(L,P), d)
+      log('solving L*d, d_prev='..snippets.permute(d,P))
       for j, column in ppairs(L, P) do
         for i, e in ppairs(column, P) do
           if i ~= j then
@@ -435,7 +430,7 @@ function taskMap.FTRAN(timer, state, k, d, P, L, R, U, index)
       index = 1
     elseif index > #R then
       -- solve U * d
-      snippets.report('solving U * d',snippets.permute(U,P), d)
+      log('solving U*d, d_prev='..snippets.permute(d,P))
       for j, column in ppairs(U, P, true) do
         local r = d[j] / column[j]
         for i, e in ppairs(column, P) do
@@ -449,9 +444,10 @@ function taskMap.FTRAN(timer, state, k, d, P, L, R, U, index)
       snippets.report('\nfeasible direction found, finding maximum distance and leaving var',d, state.x_b)
       return timer:Do("FindLeavingVar", timer, state, k,  d, state.x_b)
     else
-      snippets.report('solving R * d', R[index], d)
+      log('solving R*d, d_prev='..snippets.permute(d,P))
       -- solve R * d
       local v, p = R[index].v, P.f[R[index].p]
+      log('this row eta matrix has row #'..p..' = '..v)
       for i, e in ppairs(v, P) do
         if i ~= p then
           d[p] = d[p] - e * d[i]
@@ -496,21 +492,26 @@ function taskMap.UpdateBasis(timer, state, t, r, k, d, x_b, c_b, B, N, Z, P, R, 
   local p, pinv = P.f, P.i
   local p_r = p[r]
   local shouldPermute
+  log('checking to see if nonzero below '..p_r..':'..d)
   for i, e in ppairs(d, P) do
-    if i > r then
+    if i > p_r then
       shouldPermute = true
       break
     end
   end
   if shouldPermute then
+    log('permutation required')
     local shouldAddFactor
-    for j = p_r, U.columns do
-      if U[j][p_r] ~= 0 then
+    log('checking to see if new R factor required:'..snippets.permute(U,P))
+    for j, column in ppairs(U, P) do
+      if column[p_r] ~= 0 and j ~= p_r then
+        log('U['..j..']['..p_r..'] = '..column[p_r]..' ~=0')
         shouldAddFactor = true
         break
       end
     end
     if shouldAddFactor then
+      log('new factor required')
       local delta = vector.new(#B,{[r] = U[p_r][p_r]})
       snippets.report('solving t * U = delta',snippets.permute(U,P), delta)
       for j, column in ppairs(U, P, true) do
@@ -532,7 +533,7 @@ function taskMap.UpdateBasis(timer, state, t, r, k, d, x_b, c_b, B, N, Z, P, R, 
           v[i] = -e
         end
       end
-      table.insert(R, {p = r, v = v})
+      table.insert(R, {p = p_r, v = v})
     end
     table.insert(p, table.remove(p,r))
     for k,v in pairs(p) do
@@ -540,7 +541,7 @@ function taskMap.UpdateBasis(timer, state, t, r, k, d, x_b, c_b, B, N, Z, P, R, 
     end
   end
   U[p_r] = d
-  snippets.report('Basis Updated', B, N, P, state.L, R[#R] and R[#R].v or 'no added factor', U)
+  snippets.report('Basis Updated', B, N, P, state.L, R[#R] and (R[#R].p ..R[#R].v) or 'no added factor', U)
   log('permuted U is:'..snippets.permute(U,P))
   return timer:Do("BTRAN", timer, state, c_b:copy(), P, state.L, R, U)
 end

@@ -85,11 +85,12 @@ function snippets.report(message, ...)
 end
 
 function snippets.permute(A, P)
-  local p = matrix.new(A.columns)
+  local p, pt = matrix.new(#P.f), matrix.new(#P.f)
   for i, j in pairs(P.f) do
     p[j][i] = 1
+    pt[i][j] = 1
   end
-  return p * A * p:t()
+  return p * A * pt
 end
 
 function snippets.NewQueue()
