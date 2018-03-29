@@ -1,5 +1,5 @@
 local snippets = {}
-
+local matrix = require("libs.matrix")
 
 function snippets.wipe(t)
   for k in pairs(t) do 
@@ -84,7 +84,13 @@ function snippets.report(message, ...)
   log(table.concat(t,"\n ------------------------------------------------\n")) 
 end
 
-
+function snippets.permute(A, P)
+  local p = matrix.new(A.columns)
+  for i, j in pairs(P.f) do
+    p[j][i] = 1
+  end
+  return p * A * p:t()
+end
 
 function snippets.NewQueue()
   return {
