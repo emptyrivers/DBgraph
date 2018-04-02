@@ -85,8 +85,8 @@ function snippets.report(message, ...)
 end
 
 function snippets.permute(A, P)
-  local p, pt = matrix.new(#P.f), matrix.new(#P.f)
-  for i, j in pairs(P.f) do
+  local p, pt = matrix.new(#P), matrix.new(#P)
+  for i, j in pairs(P) do
     p[j][i] = 1
     pt[i][j] = 1
   end
