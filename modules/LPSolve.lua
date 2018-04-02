@@ -17,13 +17,11 @@ local function AddMapping(state, toMap,type)
 end
 
 function taskMap.BeginProblem(timer,graphName,target,guiElement) 
-
   local state = { --state is for things which won't be edited during the current stage of the problem
     element = guiElement,
     __forwardMap = {item = {}, recipe = {}, source = {}, compressed ={}},
     __inverseMap = {item = {}, recipe = {}, source = {}, compressed ={}}, 
   }
-
   local queue, b, graph = snippets.NewQueue(), {}, _G[graphName]
   for item, constraint in pairs(target) do
     if constraint > 0 then
