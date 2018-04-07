@@ -193,7 +193,7 @@ local function __unm(v)
     return v
 end
 vectorMt.__unm = __unm
--- multiply vector v by a scalar or vector c
+-- multiply vector v by a scalar or vector c, or a matrix v
 local function __mul(c, v)
    local w
    if type(c) == "number" then
@@ -209,8 +209,8 @@ local function __mul(c, v)
     elseif v.type == "matrix" then
         assert(v.rows == c.size, "inner dimensions must agree")
         w = vector.new(v.columns)
-        for i, row in v:vects() do
-            for j, val in row:elts() do
+        for j, column in v:vects() do
+            for i, val in column:elts() do
                 w[j] = w[j] + val * c[i]
             end
         end
