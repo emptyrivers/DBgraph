@@ -189,7 +189,7 @@ widgets.input_form_results_list = {
         local recipetoint = dictionary.recipe
         for k,v in solution:elts() do
           local recipe = recipetoint[k]
-          self:Add(widgets.basic_label).caption = ("%s:%3.2g"):format(recipe,v)
+          self:Add(widgets.basic_label).caption = ("%s:%.g"):format(recipe,v)
         end
       elseif result == "infeasible" then
         self:Add(widgets.basic_label).caption = "no valid solution"

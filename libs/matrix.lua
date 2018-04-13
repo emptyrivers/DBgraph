@@ -130,7 +130,7 @@ local function mvmul(A, v)
   for i, column in A:vects() do
     local v_i = v[i]
     for j, val in column:elts() do
-      w[i] = w[i] + v_i * val
+      w[j] = w[j] + v_i * val
     end
   end
   return w

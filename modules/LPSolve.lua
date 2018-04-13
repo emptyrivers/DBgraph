@@ -91,7 +91,7 @@ function taskMap.BuildDataStructs(timer,state, w, u_s, u_it)
   b.size = q
   local c =  vector(w) * matrix(u_s, p, n)
   state.solutiontoitems = A_c:copy()
-  local queue, Y, deleted--[[ , flipped ]] = snippets.NewQueue(), {}, {row = {}, column = {},}--[[ , {} ]]
+  local queue, Y, deleted--[[ , flipped ]] = snippets.NewQueue(), matrix.id(n), {row = {}, column = {},}--[[ , {} ]]
   for r in A_r:vects() do
     if not state.target[r] then
       queue:push(r)
@@ -107,10 +107,7 @@ function taskMap.BuildDataStructs(timer,state, w, u_s, u_it)
     end ]]
   end
   --state.flipped = flipped
-  for i = 1, n do
-    table.insert(Y,vector.new(A_c.rows,{[i]=1}))
-  end
-  snippets.report('About to simplify:', A_c, b, c)
+  snippets.report('About to simplify:', A_c, b, c, Y)
   return timer:Do("Simplify", timer, state, queue, deleted, A_r, A_c, b, c, Y)
 end
 
@@ -156,7 +153,7 @@ function taskMap.Simplify(timer, state, queue, deleted, A_r, A_c, b, c, Y)
   for i = 1, 40 do
     local r = queue:pop()
     if not r then
-      snippets.report('simplification done, about to reduce',deleted,A_r:t(), b, c)
+      snippets.report('simplification done, about to reduce',deleted,A_r:t(), b, c, Y)
       return timer:Do("ReduceProblem", timer, state, deleted, A_c, b, c, Y)
     end
     row = A_r[r]
@@ -230,7 +227,7 @@ function taskMap.ReduceProblem(timer, state, toRemove, A, b, c, Y)
       c_small[j] = c[i]
     end
   end
-  local Y_small,j = matrix.new(#c_small, #c), 0
+  local Y_small,j = matrix.new(#c, #c_small), 0
   for i=1,#c do
     if not columns[i] then
       j = j + 1
@@ -316,9 +313,11 @@ function taskMap.Phase2(timer, state)
   state.phase = 2
   state.iter = 1
   state.c, state.objective = state.objective
+  local B, c_b, c = state.B, state.c_b, state.c
   for i,j in pairs(B) do
     c_b[i] = c[j]
   end
+  snippets.report('beginning next phase')
   return timer:Do("BTRAN",timer,state, c_b:copy(), state.P, state.L, state.R, state.U)
 end
 
@@ -376,18 +375,17 @@ function taskMap.FindEnteringVar(timer, state, y, N, c, A)
     end
   end
   if not k then
-    error'solution found, checklog'
     if state.phase == 1 then
       if (state.x_b * state.c_b) < eps then
-        snippets.report("feasible solution found: onto phase 2", x_b, B, Z)
-        return timer:Do("Phase2", timer, state, x_b, c_b, L, R, U, B, N, A, c, Z)
+        snippets.report("feasible solution found: onto phase 2", state.x_b, state.B, state.Z)
+        return timer:Do("Phase2", timer, state)
       else
         return state.element:Update("infeasible")
       end
     else
-      local x, decompressor, solutiontoitems = vector.new(state.decompressor.rows), state.decompressor, state.solutiontoitems
-      for i,j in pairs(B) do
-        x[j] = x_b[i]
+      local x, decompressor, solutiontoitems = vector.new(state.decompressor.columns), state.decompressor, state.solutiontoitems
+      for i,j in pairs(state.B) do
+        x[j] = state.x_b[i]
       end
       snippets.report("Solution found:", x, decompressor, solutiontoitems)
       return timer:Do("PostSolve", state, x, decompressor, solutiontoitems)
@@ -475,7 +473,7 @@ function taskMap.UpdateBasis(timer, state, t, r, k, d, x_b, c_b, B, N, Z, P, P_i
     end
   end
   B[r], N[k] = N[k], (not Z[r]) and B[r] or nil
-  c[b] = state.c[k]
+  c_b[r] = state.c[k]
   -- update factorization of basis
   local p_r, shouldPermute = P_inv[r]
   log('checking to see if nonzero below '..p_r..':'..snippets.permute(d,P))
@@ -490,9 +488,8 @@ function taskMap.UpdateBasis(timer, state, t, r, k, d, x_b, c_b, B, N, Z, P, P_i
     local shouldAddFactor
     log('checking to see if new R factor required:'..snippets.permute(U,P))
     -- we require a new R factor if the 
-    for k = #P, p_r + 1, -1 do
-      local j = P[k]
-      if U[j][p_r] ~= 0 then
+    for k, j in pairs(P) do
+      if j ~= p_r and U[j][p_r] ~= 0 then
         log('U['..j..']['..p_r..'] = '..U[j][p_r]..' ~=0')
         shouldAddFactor = true
         break
@@ -534,6 +531,7 @@ function taskMap.UpdateBasis(timer, state, t, r, k, d, x_b, c_b, B, N, Z, P, P_i
     -- update permutation
     table.insert(P, table.remove(P, p_r))
     table.insert(P_inv, p_r, table.remove(P_inv))
+    snippets.report('new permutation',P,P_inv)
   end
   local shouldRefactor
   for _, e in d:elts() do
@@ -562,7 +560,8 @@ function taskMap.UpdateBasis(timer, state, t, r, k, d, x_b, c_b, B, N, Z, P, P_i
 end
 
 function taskMap.PostSolve(state, solution, decompressor, solutiontoitems)
-  local recipesUsed =  solution * decompressor
+  log('solution:'..solution)
+  local recipesUsed =  decompressor * solution 
   log('recipes used:'.. recipesUsed)
   local itemsProduced = solutiontoitems * recipesUsed
   log('items produced:'..itemsProduced)
