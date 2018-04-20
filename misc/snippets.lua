@@ -85,12 +85,19 @@ function snippets.report(message, ...)
 end
 
 function snippets.permute(A, P)
-  local p, pt = matrix.new(#P), matrix.new(#P)
-  for i, j in pairs(P) do
-    p[j][i] = 1
-    pt[i][j] = 1
+  local B = A:copy()
+  if A.type == 'matrix' then
+    for i, i_p in ipairs(P) do
+      for j, j_p in ipairs(P) do
+        B[i][j] = A[i_p][j_p]
+      end
+    end
+  else
+    for i, i_p in ipairs(P) do
+      B[i] = A[i_p]
+    end
   end
-  return p * A * pt
+  return B
 end
 
 function snippets.NewQueue()
@@ -112,20 +119,6 @@ function snippets.NewQueue()
       return self.last - self.first
     end,
   }
-end
-function snippets.regVec(v)
-  for i,e in v:elts() do
-    if math.abs(e) <= 1e-14 then
-      v[i] = 0
-    end
-  end
-  return v
-end
-function snippets.regMatrix(m)
-  for i,v in m:vects() do
-    snippets.regvec(v)
-  end
-  return m
 end
 
 return snippets

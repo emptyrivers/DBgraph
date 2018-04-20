@@ -107,7 +107,6 @@ function taskMap.BuildDataStructs(timer,state, w, u_s, u_it)
     end ]]
   end
   --state.flipped = flipped
-  snippets.report('About to simplify:', A_c, b, c, Y)
   return timer:Do("Simplify", timer, state, queue, deleted, A_r, A_c, b, c, Y)
 end
 
@@ -153,7 +152,6 @@ function taskMap.Simplify(timer, state, queue, deleted, A_r, A_c, b, c, Y)
   for i = 1, 40 do
     local r = queue:pop()
     if not r then
-      snippets.report('simplification done, about to reduce',deleted,A_r:t(), b, c, Y)
       return timer:Do("ReduceProblem", timer, state, deleted, A_c, b, c, Y)
     end
     row = A_r[r]
@@ -182,6 +180,7 @@ function taskMap.Simplify(timer, state, queue, deleted, A_r, A_c, b, c, Y)
 end
 
 local function IsProblemTrivial(target, A) 
+  do return false end
   local targetSeen = {}
   for i, recipe in A:vects() do
     local contributesToTarget
@@ -305,7 +304,7 @@ function taskMap.Phase1(timer,state, A, b, c)
   state.c = newc
   state.Z = artificial
   state.R = R
-  snippets.report("begin searching for reduced costs",c_b, state.P, state.L, R, state.U)
+  snippets.report("begin Phase 1", A, x_b, c_b)
   return timer:Do("BTRAN", timer, state, c_b:copy(), state.P, state.L, R, state.U)
 end
 
@@ -317,7 +316,7 @@ function taskMap.Phase2(timer, state)
   for i,j in pairs(B) do
     c_b[i] = c[j]
   end
-  snippets.report('beginning next phase')
+  snippets.report('begin Phase 2', state.A, state.x_b, c_b)
   return timer:Do("BTRAN",timer,state, c_b:copy(), state.P, state.L, state.R, state.U)
 end
 
@@ -348,12 +347,12 @@ function taskMap.BTRAN(timer,state, y, P, L, R, U, index)
         end
         y[j] = val -- since L is unit triangular, we can skip the division
       end
-      snippets.report("Reduced Costs found:"..y, state.N, state.c, state.A)
+      snippets.report("BTRAN complete:",snippets.permute(y,P),'unpermuted:'..y)
       return timer:Do("FindEnteringVar", timer, state, y, state.N, state.c, state.A)
     else -- solve y * Rk
       log('solving y*R, y_prev='..snippets.permute(y,P))
       local v, p = R[index].v, R[index].p
-      log('R\'s row is '..v..' and is at row# '..p)
+      log('R:'..snippets.permute(R[index].m, P))
       for i, e in v:elts() do -- no need to do a permuted walk, since R is atomic
         if i ~= p then
           y[i] = y[i] + e * y[p] -- add not subtract
@@ -392,7 +391,7 @@ function taskMap.FindEnteringVar(timer, state, y, N, c, A)
     end
   end
   log('\nentering variable found '..k..' which corresponds to x_'..N[k]..':'..A_k)
-  snippets.report('Searching for feasible direction',A_k,state.P,state.L,state.R,state.U)
+  snippets.report('Searching for feasible direction',A_k,state.P,state.L,state.U)
   return timer:Do("FTRAN", timer, state, k, A_k:copy(), state.P, state.L, state.R, state.U)
 end
 
@@ -424,13 +423,13 @@ function taskMap.FTRAN(timer, state, k, d, P, L, R, U, index)
           end
         end
       end
-      snippets.report('\nfeasible direction found, finding maximum distance and leaving var',d, state.x_b)
-      return timer:Do("FindLeavingVar", timer, state, k,  d, state.x_b)
+      snippets.report('FTRAN process complete',snippets.permute(d,P),'unpermuted:'..d)
+      return timer:Do("FindLeavingVar", timer, state, k,  d, state.x_b, P)
     else
       log('solving R*d, d_prev='..snippets.permute(d,P))
+      log('R:'..R[index].m)
       -- solve R * d
       local v, p = R[index].v, R[index].p
-      log('this row eta matrix has row #'..p..' = '..v)
       for i, e in v:elts() do
         if i ~= p then
           d[p] = d[p] + e * d[i] -- add, not subtract
@@ -442,7 +441,8 @@ function taskMap.FTRAN(timer, state, k, d, P, L, R, U, index)
   return timer:Do("FTRAN", timer, state, k, d, P, L, R, U, index)
 end
 
-function taskMap.FindLeavingVar(timer, state, k, d, x_b)
+function taskMap.FindLeavingVar(timer, state, k, d, x_b, P)
+  snippets.report('finding best option for leaving var',snippets.permute(d,P), snippets.permute(x_b,P))
   local u, t, r = true, math.huge
   for i,e in d:elts() do
     if e > 0 then
@@ -476,6 +476,7 @@ function taskMap.UpdateBasis(timer, state, t, r, k, d, x_b, c_b, B, N, Z, P, P_i
   c_b[r] = state.c[k]
   -- update factorization of basis
   local p_r, shouldPermute = P_inv[r]
+  log('Spike added to U at column:'..p_r)
   log('checking to see if nonzero below '..p_r..':'..snippets.permute(d,P))
   for i in d:elts() do
     if P_inv[i] > p_r then
@@ -530,7 +531,9 @@ function taskMap.UpdateBasis(timer, state, t, r, k, d, x_b, c_b, B, N, Z, P, P_i
     end
     -- update permutation
     table.insert(P, table.remove(P, p_r))
-    table.insert(P_inv, p_r, table.remove(P_inv))
+    for k,v in pairs(P) do
+      P_inv[v] = k
+    end
     snippets.report('new permutation',P,P_inv)
   end
   local shouldRefactor
